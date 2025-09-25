@@ -1,4 +1,4 @@
-RUN=qemu-system-arm -M virt -cpu cortex-a7 -nographic -kernel zig-out/bin/kernel
+RUN=qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb kernel_dtb -kernel zig-out/bin/kernel
 DUMP_TO=dump.S
 
 run:
@@ -8,7 +8,7 @@ drun:
 	$(RUN) -s -S
 
 flat_run:
-	qemu-system-arm -M virt -cpu cortex-a7 -nographic -kernel zig-out/bin/kernel.bin
+	qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb kernel_dtb -kernel zig-out/bin/kernel.bin
 
 gdb:
 	gdb-multiarch zig-out/bin/kernel -x init.gdb
