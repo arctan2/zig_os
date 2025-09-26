@@ -1,30 +1,19 @@
 const uart = @import("./uart.zig");
 const std = @import("std");
+const utils = @import("./utils.zig");
+const dtb = @import("./dtb.zig");
 
-const FdtHeader = packed struct {
-    magic: u32,
-    totalsize: u32,
-    off_dt_struct: u32,
-    off_dt_strings: u32,
-    off_mem_rsvmap: u32,
-    version: u32,
-    last_comp_version: u32,
-    boot_cpuid_phys: u32,
-    size_dt_strings: u32,
-    size_dt_struct: u32,
-};
-
-fn fixEndian(comptime T: type, _struct: *T) void {
-    inline for (std.meta.fields(@TypeOf(_struct.*))) |f| {
-        @field(_struct, f.name) = std.mem.readInt(
-            @TypeOf(@field(_struct, f.name)), @ptrCast(&@field(_struct, f.name)), .big
-        );
+export fn kernel_main(_: u32, _: u32, dtb_base: [*]u8) void {
+    const dtb_header = utils.structBigToNative(dtb.FdtHeader, @as(*dtb.FdtHeader, @ptrCast(@alignCast(dtb_base))));
+    var fdt_mem_rsvmap_traverser = dtb.FdtReserveEntryTraverser.init(dtb_base, dtb_header);
+    
+    while(fdt_mem_rsvmap_traverser.next()) |entry| {
+        uart.put_hex(u64, entry.address);
+        uart.putc('\n');
+        uart.put_number(u64, entry.size);
+        uart.putc('\n');
     }
-}
 
-export fn kernel_main(_: u32, _: u32, dtb: *FdtHeader) void {
-    fixEndian(FdtHeader, dtb);
-    uart.put_hex(u32, dtb.magic);
     while (true) {}
 }
 
