@@ -1,4 +1,5 @@
-RUN=qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb kernel_dtb -kernel zig-out/bin/kernel
+DTB=./device_trees/kernel.dtb
+RUN=qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb $(DTB) -kernel zig-out/bin/kernel
 DUMP_TO=dump.S
 
 run:
@@ -8,7 +9,7 @@ drun:
 	$(RUN) -s -S
 
 flat_run:
-	qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb kernel_dtb -kernel zig-out/bin/kernel.bin
+	qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb $(DTB) -kernel zig-out/bin/kernel.bin
 
 gdb:
 	gdb-multiarch zig-out/bin/kernel -x init.gdb
@@ -18,3 +19,7 @@ obj_dump:
 
 objcopy:
 	zig objcopy -O binary zig-out/bin/kernel zig-out/bin/kernel.bin
+
+HEX_DUMP_FROM=
+hexdump:
+	hexdump -C $(HEX_DUMP_FROM)
