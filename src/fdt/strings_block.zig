@@ -2,11 +2,11 @@ const std = @import("std");
 const types = @import("types.zig");
 
 pub const StringAccessor = struct {
-    base: [*]u8,
+    base: [*]const u8,
     max_size: u64,
-    cur_ptr: [*]u8,
+    cur_ptr: [*]const u8,
 
-    pub fn init(fdt_base: [*]u8, fdt_header: *const types.FdtHeader) StringAccessor {
+    pub fn init(fdt_base: [*]const u8, fdt_header: *const types.FdtHeader) StringAccessor {
         const base = fdt_base + fdt_header.off_dt_strings;
         return StringAccessor{ .base = base, .cur_ptr = base, .max_size = fdt_header.size_dt_strings };
     }

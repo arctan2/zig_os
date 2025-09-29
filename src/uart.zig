@@ -15,7 +15,7 @@ pub fn puts(s: []const u8) void {
     }
 }
 
-pub fn put_num(comptime T: type, num: T) void {
+pub fn putInt(comptime T: type, num: T) void {
     var reversed: [64]u8 = [_]u8{0} ** 64;
     var n = num;
 
@@ -49,7 +49,7 @@ pub fn put_num(comptime T: type, num: T) void {
     }
 }
 
-pub fn put_hex(comptime T: type, num: T) void {
+pub fn putHex(comptime T: type, num: T) void {
     var reversed = [_]u8{0} ** 64;
     var n = num;
 
@@ -91,20 +91,57 @@ pub fn put_hex(comptime T: type, num: T) void {
     }
 }
 
-pub const PrintFmtToken = enum(u8) {
-    curly_open = '{',
-    curly_close = '}',
-    hex = 'x'
-};
-
 const NO_MATCHING_CURLY = "no matching close bracket found for `{`. Please use `{{` to escape the curly.";
+
+fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: usize, comptime arg_idx: usize, args: anytype) void {
+    const arg = args[arg_idx];
+    const arg_type = @TypeOf(arg);
+    const arg_type_info = @typeInfo(arg_type);
+
+    switch(arg_type_info) {
+        .int => {
+            switch(fmt[begin]) {
+                'x' => {
+                    putHex(arg_type, arg);
+                },
+                'c' => {
+                    putc(arg);
+                },
+                '}' => {
+                    putInt(arg_type, arg);
+                },
+                else => {
+                    @compileError("invalid mode or " ++ NO_MATCHING_CURLY);
+                }
+            }
+        },
+        .@"enum" => |_| {
+            puts(@typeName(arg_type) ++ "(");
+            printInternal(fmt, begin, end, 0, .{@intFromEnum(arg)});
+            puts(")");
+        },
+        .optional => {
+            if(arg) |val| {
+                printInternal(fmt, begin, end, 0, .{val});
+            } else {
+                puts("null");
+            }
+        },
+        .pointer => {
+            printInternal(fmt, begin, end, 0, .{@intFromPtr(arg)});
+        },
+        else => {
+            @compileError("print not implemented for that type");
+        }
+    }
+}
 
 pub fn print(comptime fmt: []const u8, args: anytype) void {
     comptime var arg_idx = 0;
     comptime var i = 0;
 
     inline while(i < fmt.len) : (i += 1) {
-        if(fmt[i] == @intFromEnum(PrintFmtToken.curly_open)) {
+        if(fmt[i] == '{') {
             if(i + 1 >= fmt.len) {
                 @compileError(NO_MATCHING_CURLY);
             }
@@ -113,40 +150,23 @@ pub fn print(comptime fmt: []const u8, args: anytype) void {
 
             if(next_tok == '{') {
                 putc('{');
+                i += 1;
                 continue;
             }
 
-            const arg = args[arg_idx];
-            const arg_type = @TypeOf(arg);
-            arg_idx += 1;
+            const begin_curly = i;
+            comptime var end_curly = i;
 
-            switch(@typeInfo(arg_type)) {
-                .int => {
-                    switch(@as(PrintFmtToken, @enumFromInt(next_tok))) {
-                        PrintFmtToken.hex => {
-                            put_hex(arg_type, arg);
-                            i += 1;
-                        },
-                        PrintFmtToken.curly_close => {
-                            put_num(arg_type, arg);
-                        },
-                        else => {
-                            @compileError("invalid mode or " ++ NO_MATCHING_CURLY);
-                        }
-                    }
-                },
-                .pointer => {
-                    if(next_tok != @intFromEnum(PrintFmtToken.curly_close)) {
-                        @compileError(NO_MATCHING_CURLY);
-                    }
-                    put_hex(@intFromPtr(arg_type), arg);
-                },
-                else => {
-                    @compileError("print not implemented for that type");
-                }
+            inline while(end_curly < fmt.len and fmt[end_curly] != '}') : (end_curly += 1){}
+
+            if(end_curly >= fmt.len) {
+                @compileError(NO_MATCHING_CURLY);
             }
 
-            i += 1;
+            printInternal(fmt, begin_curly + 1, end_curly, arg_idx, args);
+            arg_idx += 1;
+
+            i = end_curly;
         } else {
             putc(fmt[i]);
         }

@@ -8,7 +8,7 @@ pub const FdtReserveEntryAccessor = struct {
     max_count: u32,
     cur_count: usize = 0,
 
-    pub fn init(fdt_base: [*]u8, fdt_header: *const types.FdtHeader) FdtReserveEntryAccessor {
+    pub fn init(fdt_base: [*]const u8, fdt_header: *const types.FdtHeader) FdtReserveEntryAccessor {
         const start = fdt_base + fdt_header.off_mem_rsvmap;
         const size: u32 = fdt_header.off_dt_struct - fdt_header.off_mem_rsvmap;
         const max_count = size / @sizeOf(types.FdtReserveEntry);
