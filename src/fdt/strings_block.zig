@@ -22,7 +22,7 @@ pub const StringAccessor = struct {
 
         self.cur_ptr += 1;
 
-        return .{cur, self.cur_ptr - cur};
+        return .{@constCast(cur), self.cur_ptr - cur};
     }
 };
 
