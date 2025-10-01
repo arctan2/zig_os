@@ -4,6 +4,33 @@ const utils = @import("../utils.zig");
 const uart = @import("../uart.zig");
 const pointer = @import("../pointer.zig");
 
+const StringAccessor = struct {
+    base: [*]const u8,
+    end: [*]const u8,
+
+    pub fn init(fdt_base: [*]const u8, fdt_header: *const types.FdtHeader) StringAccessor {
+        const base = fdt_base + fdt_header.off_dt_strings;
+        return StringAccessor{ .base = base, .end = base + fdt_header.size_dt_strings };
+    }
+
+    pub fn getAddrFromOffset(self: *StringAccessor, offset: u32) ?[*]const u8 {
+        const ptr = self.base + offset;
+        if(pointer.gte([*]const u8, ptr, self.end)) return null;
+        return ptr;
+    }
+
+    pub fn printFromOffset(self: *StringAccessor, offset: u32) void {
+        if(self.getAddrFromOffset(offset)) |ptr| {
+            var i: usize = 0;
+            while(ptr[i] != 0) : (i += 1) {
+                uart.putc(ptr[i]);
+            }
+        } else {
+            uart.print("null", void);
+        }
+    }
+};
+
 const Token = enum(u32) {
     begin_node = 0x1,
     end_node = 0x2,
@@ -13,50 +40,7 @@ const Token = enum(u32) {
     _
 };
 
-pub const NodeProp = struct {
-    len: u32,
-    nameoff: u32
-};
-
-pub const Node = struct {
-    node_start: [*]const u8,
-    cur_ptr: [*]const u8,
-
-    pub fn init(node_start: [*]const u8) Node {
-        return .{
-            .node_start = node_start,
-            .cur_ptr = node_start
-        };
-    }
-
-    pub fn nextProp(self: *Node, struct_accessor: *StructAccessor) ?NodeProp {
-        self.cur_ptr = @ptrFromInt(std.mem.alignForward(usize, @intFromPtr(self.cur_ptr), 4));
-        while(struct_accessor.asToken(self.cur_ptr)) |tok| {
-            switch(tok) {
-                .nop, .begin_node => {
-                    self.cur_ptr += 4;
-                    while(struct_accessor.asByte(self.cur_ptr)) |b| : (self.cur_ptr += 1) {
-                        if(b == 0) break;
-                    }
-                    self.cur_ptr = @ptrFromInt(std.mem.alignForward(usize, @intFromPtr(self.cur_ptr), 4));
-                },
-                .end_node => break,
-                .prop => {
-                    self.cur_ptr += 4;
-                    const ptr: *NodeProp = @constCast(@ptrCast(@alignCast(self.cur_ptr)));
-                    return utils.structBigToNative(NodeProp, ptr);
-                },
-                else => {
-                    self.cur_ptr += 1;
-                }
-            }
-        }
-
-        return null;
-    }
-};
-
-pub const StructAccessor = struct {
+const StructAccessor = struct {
     base: [*]const u8,
     end: [*]const u8,
 
@@ -109,3 +93,14 @@ pub const StructAccessor = struct {
     }
 };
 
+pub const Accessor = struct {
+    strings: StringAccessor,
+    structs: StructAccessor,
+
+    pub fn init(fdt_base: [*]const u8, fdt_header: *const types.FdtHeader) Accessor {
+        return .{
+            .strings = .init(fdt_base, fdt_header),
+            .structs = .init(fdt_base, fdt_header)
+        };
+    }
+};

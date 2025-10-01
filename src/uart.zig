@@ -120,6 +120,8 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
             printInternal(fmt, begin, end, 0, .{@intFromEnum(arg)});
             puts(")");
         },
+        .void => {
+        },
         .optional => {
             if(arg) |val| {
                 printInternal(fmt, begin, end, 0, .{val});
