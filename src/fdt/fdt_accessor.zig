@@ -13,13 +13,13 @@ const StringAccessor = struct {
         return StringAccessor{ .base = base, .end = base + fdt_header.size_dt_strings };
     }
 
-    pub fn getAddrFromOffset(self: *StringAccessor, offset: u32) ?[*]const u8 {
+    pub fn getAddrFromOffset(self: *StringAccessor, offset: usize) ?[*]const u8 {
         const ptr = self.base + offset;
         if(pointer.gte([*]const u8, ptr, self.end)) return null;
         return ptr;
     }
 
-    pub fn printFromOffset(self: *StringAccessor, offset: u32) void {
+    pub fn printFromOffset(self: *StringAccessor, offset: usize) void {
         if(self.getAddrFromOffset(offset)) |ptr| {
             var i: usize = 0;
             while(ptr[i] != 0) : (i += 1) {

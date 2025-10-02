@@ -1,5 +1,5 @@
 DTB=./device_trees/kernel.dtb
-RUN=qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb $(DTB) -kernel zig-out/bin/kernel
+RUN=qemu-system-arm -M virt -cpu cortex-a7 -nographic -m 1024 -dtb $(DTB) -kernel zig-out/bin/kernel
 DUMP_TO=dump.S
 
 run:
