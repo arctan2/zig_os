@@ -25,6 +25,3 @@ _start:
 hang:
     b hang
 
-.extern _stack_top
-.extern _bss_start
-.extern _bss_end
