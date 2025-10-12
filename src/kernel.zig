@@ -11,7 +11,7 @@ fn init_mem(mem_start: usize, mem_size: usize) void {
     const kernel_stack = page_alloc.PAGE_SIZE * 4;
     const kernel_size = kernel_end_addr - mem_start + kernel_stack;
     uart.print("kernel_end = {x}\n", .{kernel_end_addr});
-    page_alloc.init_global(std.mem.alignForward(usize, kernel_end_addr + kernel_stack, 8), mem_size - kernel_size);
+    page_alloc.initGlobal(std.mem.alignForward(usize, kernel_end_addr + kernel_stack, 8), mem_size - kernel_size);
     uart.print("after init: total_pages = {}\n", .{page_alloc.global_page_alloc.total_pages});
 }
 

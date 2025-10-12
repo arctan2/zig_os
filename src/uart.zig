@@ -115,6 +115,9 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
                 }
             }
         },
+        .bool => {
+            puts(if(arg) "true" else "false");
+        },
         .@"enum" => |_| {
             puts(@typeName(arg_type) ++ "(");
             printInternal(fmt, begin, end, 0, .{@intFromEnum(arg)});
