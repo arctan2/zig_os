@@ -1,5 +1,6 @@
-const uart = @import("../uart.zig");
-const utils = @import("../utils.zig");
+const uart = @import("uart");
+
+const utils = @import("utils");
 const std = @import("std");
 const types = @import("types.zig");
 

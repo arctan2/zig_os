@@ -1,4 +1,4 @@
-const uart = @import("../uart.zig");
+const uart = @import("uart");
 
 pub const FdtReserveEntry = packed struct {
     address: u64,

@@ -1,7 +1,7 @@
 const std = @import("std");
 const types = @import("types.zig");
-const utils = @import("../utils.zig");
-const uart = @import("../uart.zig");
+const utils = @import("utils");
+const uart = @import("uart");
 const pointer = @import("../pointer.zig");
 
 const StringAccessor = struct {

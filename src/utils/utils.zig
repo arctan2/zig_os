@@ -12,10 +12,8 @@ pub fn structBigToNative(comptime T: type, s: *const T) T {
     return newStruct;
 }
 
-pub fn isAllTestMode(msg: []const u8) bool {
-    if(std.process.hasEnvVar(std.testing.allocator, "all") catch false) return true;
-    std.debug.print("skipping: {s}\n", .{msg});
-    return false;
+pub fn isAllTestMode() bool {
+    return std.process.hasEnvVar(std.testing.allocator, "all") catch false;
 }
 
 pub fn newPrng() std.Random.Xoshiro256 {

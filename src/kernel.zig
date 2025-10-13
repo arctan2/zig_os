@@ -1,8 +1,8 @@
-const uart = @import("./uart.zig");
+const uart = @import("uart");
 const std = @import("std");
-const utils = @import("./utils.zig");
+const utils = @import("utils");
 const fdt = @import("fdt/fdt.zig");
-const page_alloc = @import("page_alloc.zig");
+const page_alloc = @import("mm").page_alloc;
 
 extern var _kernel_end: u8;
 
@@ -10,13 +10,10 @@ fn init_mem(mem_start: usize, mem_size: usize) void {
     const kernel_end_addr = @intFromPtr(&_kernel_end);
     const kernel_stack = page_alloc.PAGE_SIZE * 4;
     const kernel_size = kernel_end_addr - mem_start + kernel_stack;
-    uart.print("kernel_end = {x}\n", .{kernel_end_addr});
     page_alloc.initGlobal(std.mem.alignForward(usize, kernel_end_addr + kernel_stack, 8), mem_size - kernel_size);
-    uart.print("after init: total_pages = {}\n", .{page_alloc.global_page_alloc.total_pages});
 }
 
 export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
-
     const fdt_header_base: *fdt.types.FdtHeader = @constCast(@ptrCast(@alignCast(fdt_base)));
     const fdt_header = utils.structBigToNative(fdt.types.FdtHeader, fdt_header_base);
 

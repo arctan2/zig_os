@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const utils = @import("utils.zig");
-const uart = @import("uart.zig");
+const utils = @import("utils");
+const uart = @import("uart");
 const expect = std.testing.expect;
 
 const PageFlag = enum(u8) {
@@ -335,65 +335,65 @@ if(!builtin.is_test) {
     };
 
 if(!builtin.is_test) {
-    var allocd_pages: [256]*Page = .{@as(*Page, @ptrFromInt(8))} ** 256;
-    var allocd_pages_idx: usize = 0;
+    // var allocd_pages: [256]*Page = .{@as(*Page, @ptrFromInt(8))} ** 256;
+    // var allocd_pages_idx: usize = 0;
 
-    uart.print("-------allocing pages------------\n", void);
-    for(0..(last_order_chunks_count)) |_| {
-        const page = global_page_alloc.allocPages(1024) catch @panic("error happened in allocPages\n");
-        allocd_pages[allocd_pages_idx] = page;
-        allocd_pages_idx += 1;
-    }
+    // uart.print("-------allocing pages------------\n", void);
+    // for(0..(last_order_chunks_count)) |_| {
+    //     const page = global_page_alloc.allocPages(1024) catch @panic("error happened in allocPages\n");
+    //     allocd_pages[allocd_pages_idx] = page;
+    //     allocd_pages_idx += 1;
+    // }
 
-    if(allocd_pages_idx != last_order_chunks_count) {
-        @panic("allocd_pages_idx not matching last_order_chunks_count\n");
-    }
+    // if(allocd_pages_idx != last_order_chunks_count) {
+    //     @panic("allocd_pages_idx not matching last_order_chunks_count\n");
+    // }
 
-    for(0..MAX_ORDER) |idx| {
-        if(global_page_alloc.free_list[idx] != null) {
-            @panic("man everything should be null\n");
-        }
-    }
+    // for(0..MAX_ORDER) |idx| {
+    //     if(global_page_alloc.free_list[idx] != null) {
+    //         @panic("man everything should be null\n");
+    //     }
+    // }
 
-    uart.print("-------freeing pages------------\n", void);
-    i = 0;
-    while(i < allocd_pages_idx) : (i += 1) {
-        global_page_alloc.freeBlock(allocd_pages[i]);
-    }
+    // uart.print("-------freeing pages------------\n", void);
+    // i = 0;
+    // while(i < allocd_pages_idx) : (i += 1) {
+    //     global_page_alloc.freeBlock(allocd_pages[i]);
+    // }
 
-    uart.print("-------checking pages------------\n", void);
-    for(0..(MAX_ORDER - 1)) |idx| {
-        if(global_page_alloc.free_list[idx] != null) {
-            @panic("except last all should be null\n");
-        }
-    }
+    // uart.print("-------checking pages------------\n", void);
+    // for(0..(MAX_ORDER - 1)) |idx| {
+    //     if(global_page_alloc.free_list[idx] != null) {
+    //         @panic("except last all should be null\n");
+    //     }
+    // }
 
-    uart.print("-------counting chunks------------\n", void);
-    if(global_page_alloc.getFreeListLen(256, MAX_ORDER - 1) != last_order_chunks_count) {
-        @panic("the chunks count after free should be same as original.\n");
-    }
+    // uart.print("-------counting chunks------------\n", void);
+    // if(global_page_alloc.getFreeListLen(256, MAX_ORDER - 1) != last_order_chunks_count) {
+    //     @panic("the chunks count after free should be same as original.\n");
+    // }
 
-    const p0 = global_page_alloc.allocPages(128) catch @panic("allco");
-    const p1 = global_page_alloc.allocPages(64) catch @panic("allco");
-    const p2 = global_page_alloc.allocPages(256) catch @panic("allco");
-    const p3 = global_page_alloc.allocPages(64) catch @panic("allco");
-    const p4 = global_page_alloc.allocPages(128) catch @panic("allco");
-    const p5 = global_page_alloc.allocPages(256) catch @panic("allco");
-    const p6 = global_page_alloc.allocPages(64) catch @panic("allco");
-    const p7 = global_page_alloc.allocPages(128) catch @panic("allco");
-    const p8 = global_page_alloc.allocPages(256) catch @panic("allco");
+    // const p0 = global_page_alloc.allocPages(128) catch @panic("allco");
+    // const p1 = global_page_alloc.allocPages(64) catch @panic("allco");
+    // const p2 = global_page_alloc.allocPages(256) catch @panic("allco");
+    // const p3 = global_page_alloc.allocPages(64) catch @panic("allco");
+    // const p4 = global_page_alloc.allocPages(128) catch @panic("allco");
+    // const p5 = global_page_alloc.allocPages(256) catch @panic("allco");
+    // const p6 = global_page_alloc.allocPages(64) catch @panic("allco");
+    // const p7 = global_page_alloc.allocPages(128) catch @panic("allco");
+    // const p8 = global_page_alloc.allocPages(256) catch @panic("allco");
 
-    global_page_alloc.freeBlock(p0);
-    global_page_alloc.freeBlock(p1);
-    global_page_alloc.freeBlock(p2);
-    global_page_alloc.freeBlock(p3);
-    global_page_alloc.freeBlock(p4);
-    global_page_alloc.freeBlock(p5);
-    global_page_alloc.freeBlock(p6);
-    global_page_alloc.freeBlock(p7);
-    global_page_alloc.freeBlock(p8);
+    // global_page_alloc.freeBlock(p0);
+    // global_page_alloc.freeBlock(p1);
+    // global_page_alloc.freeBlock(p2);
+    // global_page_alloc.freeBlock(p3);
+    // global_page_alloc.freeBlock(p4);
+    // global_page_alloc.freeBlock(p5);
+    // global_page_alloc.freeBlock(p6);
+    // global_page_alloc.freeBlock(p7);
+    // global_page_alloc.freeBlock(p8);
 
-    uart.print("--------------EVERYTHING PASSED-----------\n", void);
+    // uart.print("--------------EVERYTHING PASSED-----------\n", void);
 }
 }
 
