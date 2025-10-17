@@ -91,6 +91,42 @@ pub fn putHex(comptime T: type, num: T) void {
     }
 }
 
+pub fn putBin(comptime T: type, num: T) void {
+    var reversed = [_]u8{0} ** 64;
+    var n = num;
+
+    puts("0x");
+
+    if (n == 0) {
+        putc('0');
+        return;
+    }
+
+    if (n < 0) {
+        putc('-');
+        n = -n;
+    }
+
+    if (n == 0) {
+        putc('0');
+        return;
+    }
+
+    var count: usize = 0;
+
+    while (n != 0) {
+        const d: u8 = @intCast(@rem(n, @as(u8, 2)));
+        reversed[@intCast(count)] = d + '0';
+        count += 1;
+        n = @divTrunc(n, 2);
+    }
+
+    while (count > 0) {
+        count -= 1;
+        putc(reversed[count]);
+    }
+}
+
 const NO_MATCHING_CURLY = "no matching close bracket found for `{`. Please use `{{` to escape the curly.";
 
 fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: usize, comptime arg_idx: usize, args: anytype) void {
@@ -106,6 +142,9 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
                 },
                 'c' => {
                     putc(arg);
+                },
+                'b' => {
+                    putBin(arg_type, arg);
                 },
                 '}' => {
                     putInt(arg_type, arg);

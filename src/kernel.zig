@@ -2,16 +2,8 @@ const uart = @import("uart");
 const std = @import("std");
 const utils = @import("utils");
 const fdt = @import("fdt/fdt.zig");
-const page_alloc = @import("mm").page_alloc;
-
-extern var _kernel_end: u8;
-
-fn init_mem(mem_start: usize, mem_size: usize) void {
-    const kernel_end_addr = @intFromPtr(&_kernel_end);
-    const kernel_stack = page_alloc.PAGE_SIZE * 4;
-    const kernel_size = kernel_end_addr - mem_start + kernel_stack;
-    page_alloc.initGlobal(std.mem.alignForward(usize, kernel_end_addr + kernel_stack, 8), mem_size - kernel_size);
-}
+const mm = @import("mm");
+const page_alloc = mm.page_alloc;
 
 export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
     const fdt_header_base: *fdt.types.FdtHeader = @constCast(@ptrCast(@alignCast(fdt_base)));
@@ -42,7 +34,9 @@ export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
         if(memory_block.getPropByName(&accessor, "reg")) |prop| {
             const mem_start = fdt.readRegFromCells(address_cells, prop.data);
             const mem_size = fdt.readRegFromCells(size_cells, @ptrCast(prop.data + (@sizeOf(u32) * address_cells)));
-            init_mem(mem_start, mem_size);
+            mm.initMemory(mem_start, mem_size) catch {
+                @panic("error init mm");
+            };
         } else {
             @panic("reg not found");
         }

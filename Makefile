@@ -12,7 +12,7 @@ flat_run:
 	qemu-system-arm -M virt -cpu cortex-a7 -nographic -dtb $(DTB) -kernel zig-out/bin/kernel.bin
 
 gdb:
-	gdb-multiarch zig-out/bin/kernel -x init.gdb
+	gdb-multiarch zig-out/bin/kernel -tui -x init.gdb
 
 obj_dump:
 	arm-linux-gnueabihf-objdump -d ./zig-out/bin/kernel > $(DUMP_TO)

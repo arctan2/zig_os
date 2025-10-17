@@ -42,6 +42,7 @@ pub const AllocError = error{
 };
 
 pub const PageAllocator = struct {
+    base_addr: usize,
     pages: [*]Page,
     free_list: [MAX_ORDER]?*Page,
     total_pages: usize,
@@ -52,7 +53,7 @@ pub const PageAllocator = struct {
     }
 
     fn pageIdxToPhys(self: *PageAllocator, idx: usize) usize {
-        return @intFromPtr(self.pages) + (idx << PAGE_SHIFT);
+        return self.base_addr + (idx << PAGE_SHIFT);
     }
 
     fn pageToPhys(self: *PageAllocator, page: *Page) usize {
@@ -218,7 +219,7 @@ pub const PageAllocator = struct {
     }
 
     // assumes the inital order is NOT MAX_ORDER - 1 and buddy_1.order == buddy_2.order
-    pub fn mergeIterBuddies(self: *PageAllocator, buddy_1: *Page, buddy_2: *Page) *Page {
+    fn mergeIterBuddies(self: *PageAllocator, buddy_1: *Page, buddy_2: *Page) *Page {
         var head_block: *Page = if(@intFromPtr(buddy_1) < @intFromPtr(buddy_2)) buddy_1 else buddy_2;
         var buddy = self.getBuddy(head_block);
 
@@ -282,10 +283,12 @@ pub fn initGlobal(
 ) void {
     // TODO: handle not-a-power of two total_pages
 
-    const pages: [*]Page = @ptrFromInt(start_addr);
     const total_pages = @divTrunc(size_bytes, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
     const mapped_pages_count = last_order_chunks_count * LAST_ORDER_BLOCK_SIZE;
+    const pages_meta_data_size_bytes = total_pages * @sizeOf(Page);
+    const start_addr_after_meta_data = std.mem.alignForward(usize, start_addr + pages_meta_data_size_bytes, PAGE_SIZE);
+    const pages: [*]Page = @ptrFromInt(start_addr);
 
     var free_list: [MAX_ORDER]?*Page = .{null} ** MAX_ORDER;
     var i: usize = 0;
@@ -297,17 +300,27 @@ pub fn initGlobal(
 if(!builtin.is_test) {
     uart.print(
         \\
+        \\start_addr = {x},
+        \\end_addr = {x},
+        \\size_bytes = {},
         \\total_pages = {},
         \\last_order_chunks_count = {},
-        \\mapped_pages = {} - {}
-        \\unmapped_pages_count = {}
+        \\mapped_pages = {} - {},
+        \\unmapped_pages_count = {},
+        \\pages_meta_data_size_bytes = {}.
+        \\start_addr_after_meta_data = {x}.
         \\
         \\
         , .{
+            start_addr,
+            start_addr + size_bytes,
+            size_bytes,
             total_pages,
             last_order_chunks_count,
             @as(u32, 0), mapped_pages_count - 1,
-            total_pages - mapped_pages_count
+            total_pages - mapped_pages_count,
+            pages_meta_data_size_bytes,
+            start_addr_after_meta_data,
         }
     );
 }
@@ -328,6 +341,7 @@ if(!builtin.is_test) {
     free_list[MAX_ORDER - 1] = &pages[0];
 
     global_page_alloc = .{
+        .base_addr = start_addr_after_meta_data,
         .pages = pages,
         .free_list = free_list,
         .total_pages = total_pages,
@@ -397,6 +411,18 @@ if(!builtin.is_test) {
 }
 }
 
+pub fn allocPages(pages_count: usize) AllocError!*Page {
+    return global_page_alloc.allocPages(pages_count);
+}
+
+pub fn freeBlock(block: *Page) void {
+    global_page_alloc.freeBlock(block);
+}
+
+pub fn pageToPhys(block: *Page) usize {
+    return global_page_alloc.pageToPhys(block);
+}
+
 test "allocate and deallocate 1 block in every order" {
     const allocator = std.heap.page_allocator;
     const size = (1024 * 1024 * 1024 * 1);
@@ -419,7 +445,7 @@ test "allocate and deallocate 1 block in every order" {
 }
 
 test "allocate and deallocate at each order" {
-    if(!utils.isAllTestMode("allocate and deallocate at each order")) return;
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
 
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
@@ -499,7 +525,7 @@ test "basic test case free" {
 }
 
 test "merge test case" {
-    if(!utils.isAllTestMode("allocate and deallocate at each order")) return;
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
     const memory = try allocator.alloc(u8, size);
@@ -540,7 +566,7 @@ test "merge test case" {
 }
 
 test "random allocate and deallocate" {
-    // if(!utils.isAllTestMode("allocate and deallocate at each order")) return;
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
     const memory = try allocator.alloc(u8, size);
@@ -577,7 +603,7 @@ test "random allocate and deallocate" {
 }
 
 test "loop allocate and deallocate" {
-    // if(!utils.isAllTestMode("allocate and deallocate at each order")) return;
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
     const memory = try allocator.alloc(u8, size);
