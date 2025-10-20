@@ -3,6 +3,7 @@ ENTRY(_start)
 SECTIONS
 {
     . = 0x40000000;
+	_kernel_start = .;
 
     /*. = 0x8000;*/
 
@@ -13,13 +14,14 @@ SECTIONS
     }
 
     . = ALIGN(8);
-    _stack_top = . + 0x4000;
 
     .data : { *(.data*) }
     .bss  : { *(.bss*) *(COMMON) }
 
     . = ALIGN(8);
+    _stack_top = . + 0x4000;
 
+    . = ALIGN(8);
 	_kernel_end = .;
 }
 

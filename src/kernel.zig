@@ -32,6 +32,10 @@ export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
     if(accessor.structs.findNameStartsWith("memory")) |memory_block_ptr| {
         var memory_block = fdt.node.FdtNode.init(memory_block_ptr);
         if(memory_block.getPropByName(&accessor, "reg")) |prop| {
+            prop.printName();
+            uart.print(": ", void);
+            prop.printValue();
+            uart.print("\n", void);
             const mem_start = fdt.readRegFromCells(address_cells, prop.data);
             const mem_size = fdt.readRegFromCells(size_cells, @ptrCast(prop.data + (@sizeOf(u32) * address_cells)));
             mm.initMemory(mem_start, mem_size) catch {

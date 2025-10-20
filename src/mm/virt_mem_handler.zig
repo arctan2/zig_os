@@ -1,33 +1,22 @@
-const PageTable = @import("./page_table.zig").PageTable;
+const page_table = @import("./page_table.zig");
 const uart = @import("uart");
 const page_alloc = @import("page_alloc.zig");
 const utils = @import("utils");
 
-const L1PageTable = PageTable(4096);
-
 const VirtAddress = packed struct {
     offset: u12,
-    l2: u8,
-    l1: u12,
+    l2_idx: u8,
+    l1_idx: u12,
 };
 
-const L1EntryType = enum(u2) {
-    Fault = 0b00,
-    L2TablePtr = 0b01,
-    Section = 0b10
+pub const MapFlags = packed struct {
+    is_l2_table_ptr: u1,
 };
 
-const MapFlags = enum(u16) {
-    L2TablePtr = 1 << 0,
-    _,
-
-    fn isFlagSet(flags: MapFlags, flag: MapFlags) bool {
-        return (@intFromEnum(flags) & @intFromEnum(flag)) == 1;
-    }
-};
+pub const KERNEL_VIRT_BASE = 0xC0000000;
 
 pub const VirtMemHandler = struct {
-    l1: *L1PageTable,
+    l1: *page_table.L1PageTable,
 
     pub fn init() !VirtMemHandler {
         return .{
@@ -35,35 +24,58 @@ pub const VirtMemHandler = struct {
         };
     }
 
-    fn setL1EntryType(addr: *usize, flag: L1EntryType) void {
-        addr.* = addr.* | @intFromEnum(flag);
+    pub fn kernelIdentityMapSection(self: *VirtMemHandler, virt: usize, phys: usize) !void {
+        const virt_addr: VirtAddress align(32) = @bitCast(virt);
+        const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
+        entry.section_addr = @intCast(phys >> 20);
+        entry.type = .Section;
     }
 
-    pub fn map(self: *VirtMemHandler, virt: usize, _: usize, flags: MapFlags) !void {
+    // for these to work properly the page allocator base address must be aligned to 1MB
+    pub fn map(self: *VirtMemHandler, virt: usize, phys: usize, flags: MapFlags) !void {
         const virt_addr: VirtAddress align(32) = @bitCast(virt);
-        const l1_entry = &self.l1.entries[virt_addr.l1];
-        const l1_desc: L1EntryType = @enumFromInt(l1_entry.* & 0b11);
+        const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
 
-        switch(l1_desc) {
+        switch(entry_type) {
             .Fault => {
-                if(MapFlags.isFlagSet(flags, .L2TablePtr)) {
-                    const table_page = try page_alloc.allocPages(1);
-                    const table_page_phys_addr = page_alloc.pageToPhys(table_page);
-                    l1_entry.* = table_page_phys_addr & 0xfffffc00;
-                    setL1EntryType(l1_entry, .L2TablePtr);
+                if(flags.is_l2_table_ptr == 1) {
+                    const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
+                    const l2_table_page = try page_alloc.allocPages(1);
+                    const l2_table_phys_addr = page_alloc.pageToPhys(l2_table_page);
+                    const l2_table: *page_table.L2PageTable = @ptrFromInt(l2_table_phys_addr);
+                    const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
+
+                    if(l2_entry.type != .Fault) {
+                        return;
+                    }
+
+                    l1_entry.l2_addr = @intCast(l2_table_phys_addr >> 12);
+                    l1_entry.type = .L2TablePtr;
+                    l2_entry.phys_addr = @intCast(phys >> 12);
+                    l2_entry.type = .SmallPage;
                 } else {
-                    const table_page = try page_alloc.allocPages(256);
-                    const table_page_phys_addr = page_alloc.pageToPhys(table_page);
-                    l1_entry.* = table_page_phys_addr & 0xfff00000;
-                    setL1EntryType(l1_entry, .Section);
+                    const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
+                    const section_page = try page_alloc.allocPages(256);
+                    const section_phys_addr = page_alloc.pageToPhys(section_page);
+                    entry.section_addr = @intCast(section_phys_addr >> 20);
+                    entry.type = .Section;
                 }
-                uart.print("{b}\n", .{l1_entry.*});
+                self.l1.print();
             },
             .L2TablePtr => {
-                uart.print("TODO: L2PagePtr", void);
+                const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
+                const l2_table_phys_addr = page_alloc.pageToPhys(l1_entry.l2_addr);
+                const l2_table: *page_table.L2PageTable = @ptrFromInt(l2_table_phys_addr);
+                const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
+
+                if(l2_entry.type != .Fault) {
+                    return;
+                }
+
+                l2_entry.phys_addr = @intCast(phys >> 12);
+                l2_entry.type = .SmallPage;
             },
-            .Section => {
-                uart.print("TODO: Section", void);
+            else => {
             }
         }
     }

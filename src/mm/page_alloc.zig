@@ -34,6 +34,7 @@ pub const MAX_ORDER = 11;
 pub const LAST_ORDER_BLOCK_SIZE = 1 << (MAX_ORDER - 1);
 pub const PAGE_SHIFT = 12;
 pub const PAGE_SIZE = 1 << PAGE_SHIFT;
+pub const SECTION_SIZE = 0x100000;
 
 pub const AllocError = error{
     InvalidValue,
@@ -50,6 +51,12 @@ pub const PageAllocator = struct {
 
     fn pageIdx(self: *PageAllocator, page: *Page) usize {
         return page - self.pages;
+    }
+
+    fn physToPage(self: *PageAllocator, phys: usize) ?*Page {
+        const idx = (phys - self.base_addr) / PAGE_SIZE;
+        if(idx >= self.total_pages) return null;
+        return &self.pages[idx];
     }
 
     fn pageIdxToPhys(self: *PageAllocator, idx: usize) usize {
@@ -280,36 +287,38 @@ pub var global_page_alloc: PageAllocator = undefined;
 pub fn initGlobal(
     start_addr: usize,
     size_bytes: usize
-) void {
+) usize {
     // TODO: handle not-a-power of two total_pages
 
     const total_pages = @divTrunc(size_bytes, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
     const mapped_pages_count = last_order_chunks_count * LAST_ORDER_BLOCK_SIZE;
     const pages_meta_data_size_bytes = total_pages * @sizeOf(Page);
-    const start_addr_after_meta_data = std.mem.alignForward(usize, start_addr + pages_meta_data_size_bytes, PAGE_SIZE);
-    const pages: [*]Page = @ptrFromInt(start_addr);
+    const free_pages_start = std.mem.alignForward(usize, start_addr + pages_meta_data_size_bytes, SECTION_SIZE);
+    const pages_meta_data: [*]Page = @ptrFromInt(start_addr);
 
     var free_list: [MAX_ORDER]?*Page = .{null} ** MAX_ORDER;
     var i: usize = 0;
 
     while(i < total_pages) : (i += 1) {
-        pages[i] = .{.prev = null, .next = null, .flags = .Reset, .order = 0};
+        pages_meta_data[i] = .{.prev = null, .next = null, .flags = .Reset, .order = 0};
     }
 
 if(!builtin.is_test) {
     uart.print(
+        \\--------------META DATA-----------------
         \\
-        \\start_addr = {x},
+        \\kernel_end_aligned = {x},
         \\end_addr = {x},
         \\size_bytes = {},
         \\total_pages = {},
         \\last_order_chunks_count = {},
         \\mapped_pages = {} - {},
         \\unmapped_pages_count = {},
-        \\pages_meta_data_size_bytes = {}.
-        \\start_addr_after_meta_data = {x}.
+        \\pages_meta_data_size_bytes = {},
+        \\free_pages_start = {x},
         \\
+        \\--------------META DATA END-----------------
         \\
         , .{
             start_addr,
@@ -320,17 +329,17 @@ if(!builtin.is_test) {
             @as(u32, 0), mapped_pages_count - 1,
             total_pages - mapped_pages_count,
             pages_meta_data_size_bytes,
-            start_addr_after_meta_data,
+            free_pages_start,
         }
     );
 }
 
-    var prev_block = &pages[0];
+    var prev_block = &pages_meta_data[0];
     prev_block.setFlag(.BlockStart);
     prev_block.order = MAX_ORDER - 1;
 
     for(1..last_order_chunks_count) |idx| {
-        const next_block = &pages[idx * LAST_ORDER_BLOCK_SIZE];
+        const next_block = &pages_meta_data[idx * LAST_ORDER_BLOCK_SIZE];
         prev_block.next = next_block;
         next_block.prev = prev_block;
         next_block.setFlag(.BlockStart);
@@ -338,77 +347,17 @@ if(!builtin.is_test) {
         prev_block = next_block;
     }
 
-    free_list[MAX_ORDER - 1] = &pages[0];
+    free_list[MAX_ORDER - 1] = &pages_meta_data[0];
 
     global_page_alloc = .{
-        .base_addr = start_addr_after_meta_data,
-        .pages = pages,
+        .base_addr = free_pages_start,
+        .pages = pages_meta_data,
         .free_list = free_list,
         .total_pages = total_pages,
         .mapped_pages = mapped_pages_count
     };
 
-if(!builtin.is_test) {
-    // var allocd_pages: [256]*Page = .{@as(*Page, @ptrFromInt(8))} ** 256;
-    // var allocd_pages_idx: usize = 0;
-
-    // uart.print("-------allocing pages------------\n", void);
-    // for(0..(last_order_chunks_count)) |_| {
-    //     const page = global_page_alloc.allocPages(1024) catch @panic("error happened in allocPages\n");
-    //     allocd_pages[allocd_pages_idx] = page;
-    //     allocd_pages_idx += 1;
-    // }
-
-    // if(allocd_pages_idx != last_order_chunks_count) {
-    //     @panic("allocd_pages_idx not matching last_order_chunks_count\n");
-    // }
-
-    // for(0..MAX_ORDER) |idx| {
-    //     if(global_page_alloc.free_list[idx] != null) {
-    //         @panic("man everything should be null\n");
-    //     }
-    // }
-
-    // uart.print("-------freeing pages------------\n", void);
-    // i = 0;
-    // while(i < allocd_pages_idx) : (i += 1) {
-    //     global_page_alloc.freeBlock(allocd_pages[i]);
-    // }
-
-    // uart.print("-------checking pages------------\n", void);
-    // for(0..(MAX_ORDER - 1)) |idx| {
-    //     if(global_page_alloc.free_list[idx] != null) {
-    //         @panic("except last all should be null\n");
-    //     }
-    // }
-
-    // uart.print("-------counting chunks------------\n", void);
-    // if(global_page_alloc.getFreeListLen(256, MAX_ORDER - 1) != last_order_chunks_count) {
-    //     @panic("the chunks count after free should be same as original.\n");
-    // }
-
-    // const p0 = global_page_alloc.allocPages(128) catch @panic("allco");
-    // const p1 = global_page_alloc.allocPages(64) catch @panic("allco");
-    // const p2 = global_page_alloc.allocPages(256) catch @panic("allco");
-    // const p3 = global_page_alloc.allocPages(64) catch @panic("allco");
-    // const p4 = global_page_alloc.allocPages(128) catch @panic("allco");
-    // const p5 = global_page_alloc.allocPages(256) catch @panic("allco");
-    // const p6 = global_page_alloc.allocPages(64) catch @panic("allco");
-    // const p7 = global_page_alloc.allocPages(128) catch @panic("allco");
-    // const p8 = global_page_alloc.allocPages(256) catch @panic("allco");
-
-    // global_page_alloc.freeBlock(p0);
-    // global_page_alloc.freeBlock(p1);
-    // global_page_alloc.freeBlock(p2);
-    // global_page_alloc.freeBlock(p3);
-    // global_page_alloc.freeBlock(p4);
-    // global_page_alloc.freeBlock(p5);
-    // global_page_alloc.freeBlock(p6);
-    // global_page_alloc.freeBlock(p7);
-    // global_page_alloc.freeBlock(p8);
-
-    // uart.print("--------------EVERYTHING PASSED-----------\n", void);
-}
+    return free_pages_start;
 }
 
 pub fn allocPages(pages_count: usize) AllocError!*Page {
@@ -423,6 +372,10 @@ pub fn pageToPhys(block: *Page) usize {
     return global_page_alloc.pageToPhys(block);
 }
 
+pub fn physToPage(phys: usize) ?*Page {
+    return global_page_alloc.physToPage(phys);
+}
+
 test "allocate and deallocate 1 block in every order" {
     const allocator = std.heap.page_allocator;
     const size = (1024 * 1024 * 1024 * 1);
@@ -432,7 +385,7 @@ test "allocate and deallocate 1 block in every order" {
 
     const start = @intFromPtr(@as([*]u8, @ptrCast(memory)));
 
-    initGlobal(start, size);
+    _ = initGlobal(start, size);
 
     for(0..MAX_ORDER) |i| {
         const page = try global_page_alloc.allocPages(@as(usize, 1) << @intCast(i));
@@ -459,7 +412,7 @@ test "allocate and deallocate at each order" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    initGlobal(start, size);
+    _ = initGlobal(start, size);
 
     for(0..MAX_ORDER) |order| {
         const chunk_size = (@as(usize, 1) << @intCast(order));
@@ -500,7 +453,7 @@ test "basic test case free" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    initGlobal(start, size);
+    _ = initGlobal(start, size);
 
     const a = try global_page_alloc.allocPages(512);
     const b = try global_page_alloc.allocPages(512);
@@ -538,7 +491,7 @@ test "merge test case" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    initGlobal(start, size);
+    _ = initGlobal(start, size);
 
     const a = try global_page_alloc.allocPages(512);
     const b = try global_page_alloc.allocPages(256);
@@ -579,7 +532,7 @@ test "random allocate and deallocate" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    initGlobal(start, size);
+    _ = initGlobal(start, size);
 
     var prng: std.Random.Xoshiro256 = utils.newPrng();
     var rand = prng.random();
@@ -616,7 +569,7 @@ test "loop allocate and deallocate" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    initGlobal(start, size);
+    _ = initGlobal(start, size);
 
     for(0..5) |_| {
         for(0..11) |i| {
