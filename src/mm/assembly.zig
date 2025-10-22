@@ -1,14 +1,14 @@
-inline fn dsb() void {
+pub inline fn dsb() void {
     asm volatile ("dsb" ::: .{.memory = true});
 }
 
-inline fn isb() void {
-    asm volatile ("dsb" ::: .{.memory = true});
+pub inline fn isb() void {
+    asm volatile ("isb" ::: .{.memory = true});
 }
 
 pub fn invalidateTLBUnified() void {
     asm volatile (
-        "mrc p15, 0, %[val], c8, c7, 0"
+        "mcr p15, 0, %[val], c8, c7, 0"
         :
         : [val] "r" (0)
     );

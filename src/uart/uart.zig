@@ -1,8 +1,18 @@
 const std = @import("std");
 
-const UART_BASE: usize = 0x09000000;
-const UART_DR: *volatile u32 = @ptrFromInt(UART_BASE + 0x00);
-const UART_FR: *volatile u32 = @ptrFromInt(UART_BASE + 0x18);
+var UART_BASE: usize = undefined;
+var UART_DR: *volatile u32 = undefined;
+var UART_FR: *volatile u32 = undefined;
+
+pub fn setUartBase(base: usize) void {
+    UART_BASE = base;
+    UART_DR = @ptrFromInt(UART_BASE + 0x00);
+    UART_FR = @ptrFromInt(UART_BASE + 0x18);
+}
+
+pub fn getUartBase() usize {
+    return UART_BASE;
+}
 
 pub fn putc(c: u8) void {
     while ((UART_FR.* & (1 << 5)) != 0) {}

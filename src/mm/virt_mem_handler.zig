@@ -2,6 +2,7 @@ const page_table = @import("./page_table.zig");
 const uart = @import("uart");
 const page_alloc = @import("page_alloc.zig");
 const utils = @import("utils");
+const kernel_global = @import("kernel_global.zig");
 
 const VirtAddress = packed struct {
     offset: u12,
@@ -13,8 +14,6 @@ pub const MapFlags = packed struct {
     is_l2_table_ptr: u1,
 };
 
-pub const KERNEL_VIRT_BASE = 0xC0000000;
-
 pub const VirtMemHandler = struct {
     l1: *page_table.L1PageTable,
 
@@ -24,11 +23,16 @@ pub const VirtMemHandler = struct {
         };
     }
 
-    pub fn kernelIdentityMapSection(self: *VirtMemHandler, virt: usize, phys: usize) !void {
+    pub fn kernelMapSection(self: *VirtMemHandler, virt: usize, phys: usize) !void {
         const virt_addr: VirtAddress align(32) = @bitCast(virt);
         const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
         entry.section_addr = @intCast(phys >> 20);
         entry.type = .Section;
+    }
+
+    pub fn kernelUnmapSection(self: *VirtMemHandler, virt: usize) void {
+        const virt_addr: VirtAddress align(32) = @bitCast(virt);
+        self.l1.entries[virt_addr.l1_idx] = 0;
     }
 
     // for these to work properly the page allocator base address must be aligned to 1MB
@@ -42,7 +46,7 @@ pub const VirtMemHandler = struct {
                     const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
                     const l2_table_page = try page_alloc.allocPages(1);
                     const l2_table_phys_addr = page_alloc.pageToPhys(l2_table_page);
-                    const l2_table: *page_table.L2PageTable = @ptrFromInt(l2_table_phys_addr);
+                    const l2_table: *page_table.L2PageTable = @ptrFromInt(kernel_global.physToVirt(l2_table_phys_addr));
                     const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
 
                     if(l2_entry.type != .Fault) {
@@ -56,7 +60,7 @@ pub const VirtMemHandler = struct {
                 } else {
                     const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
                     const section_page = try page_alloc.allocPages(256);
-                    const section_phys_addr = page_alloc.pageToPhys(section_page);
+                    const section_phys_addr = kernel_global.physToVirt(page_alloc.pageToPhys(section_page));
                     entry.section_addr = @intCast(section_phys_addr >> 20);
                     entry.type = .Section;
                 }
@@ -65,7 +69,7 @@ pub const VirtMemHandler = struct {
             .L2TablePtr => {
                 const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
                 const l2_table_phys_addr = page_alloc.pageToPhys(l1_entry.l2_addr);
-                const l2_table: *page_table.L2PageTable = @ptrFromInt(l2_table_phys_addr);
+                const l2_table: *page_table.L2PageTable = @ptrFromInt(kernel_global.physToVirt(l2_table_phys_addr));
                 const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
 
                 if(l2_entry.type != .Fault) {

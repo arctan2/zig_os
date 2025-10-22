@@ -6,6 +6,7 @@ const mm = @import("mm");
 const page_alloc = mm.page_alloc;
 
 export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
+    uart.setUartBase(0x09000000);
     const fdt_header_base: *fdt.types.FdtHeader = @constCast(@ptrCast(@alignCast(fdt_base)));
     const fdt_header = utils.structBigToNative(fdt.types.FdtHeader, fdt_header_base);
 
