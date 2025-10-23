@@ -77,7 +77,16 @@ pub fn build(b: *std.Build) void {
     exe.bundle_compiler_rt = true;
     exe.addAssemblyFile(b.path("./src/start.S"));
 
+    const exe_gdb = b.addExecutable(.{
+        .name = "kernel_gdb",
+        .root_module = root_module
+    });
+
+    exe_gdb.setLinkerScript(b.path("./src/linker_gdb.ld"));
+    exe_gdb.bundle_compiler_rt = true;
+
     b.installArtifact(exe);
+    b.installArtifact(exe_gdb);
 
     runTests(b);
 }

@@ -49,6 +49,8 @@ export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
         @panic("memory not found");
     }
 
+    uart.print("yoo we in infinite loop part\n", .{});
+
     while (true) {}
 }
 

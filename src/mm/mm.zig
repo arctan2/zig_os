@@ -49,15 +49,21 @@ fn initMMU(mem_end: usize) !void {
     const a: usize = asm volatile ("mov %[a], pc" : [a] "=r" (->usize));
     uart.print("before = {x}, KERNEL_VIRT_OFFSET = {x}\n", .{a, kernel_global.KERNEL_VIRT_OFFSET});
 
+    const addr_relocate_label = asm volatile("adr %[a], relocate_label" : [a] "=r" (->usize));
+    uart.print("relocate_label = {x}\n", .{addr_relocate_label});
+
     asm volatile (
         \\add sp, sp, %[offset]
-        \\mov r0, pc
+        \\adr r0, relocate_label
         \\add r0, r0, %[offset]
-        \\add r0, r0, #8
         \\mov pc, r0
+        \\relocate_label:
         :
-        : [offset] "r" (kernel_global.KERNEL_VIRT_OFFSET)
+        : [offset] "r" (kernel_global.KERNEL_VIRT_OFFSET), [val] "r" (0)
     );
+
+    const b: usize = asm volatile ("mov %[a], pc" : [a] "=r" (->usize));
+    uart.print("after = {x}\n", .{b});
 
     assembly.invalidateTLBUnified();
 
@@ -68,5 +74,9 @@ fn initMMU(mem_end: usize) !void {
     }
 
     uart.print("man unmapped and we good.\n", void);
+
+    kernel_virt_mem.l1.print();
+
+    while(true) {}
 }
 

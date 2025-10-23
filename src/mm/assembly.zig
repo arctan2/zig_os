@@ -106,6 +106,6 @@ pub fn enableMMU(ttbr: usize) void {
     asm volatile ("mrc p15, 0, %[val], c1, c0, 0" : [val] "=r" (sctlr));
     sctlr |= 0x1;
     asm volatile ("mcr p15, 0, %[val], c1, c0, 0" :: [val] "r" (sctlr));
-    asm volatile ("isb");
+    isb();
 }
 
