@@ -31,40 +31,59 @@ pub fn build(b: *std.Build) void {
         .abi = .eabi,
     });
 
+    const isDebugModeOptimize = true;
+
     const uart = b.createModule(.{
         .root_source_file = b.path("src/uart/uart.zig"),
         .target = target,
-        .optimize = .Debug,
-        // .optimize = .ReleaseSafe,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
     });
 
     const utils = b.createModule(.{
         .root_source_file = b.path("src/utils/utils.zig"),
         .target = target,
-        .optimize = .Debug,
-        // .optimize = .ReleaseSafe,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+    });
+
+    const arm = b.createModule(.{
+        .root_source_file = b.path("src/arm/arm.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "uart", .module = uart},
+        }
     });
 
     const mm = b.createModule(.{
         .root_source_file = b.path("src/mm/mm.zig"),
         .target = target,
-        .optimize = .Debug,
-        // .optimize = .ReleaseSafe,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
             .{.name = "utils", .module = utils},
-            .{.name = "uart", .module = uart}
+            .{.name = "uart", .module = uart},
+            .{.name = "arm", .module = arm},
+        }
+    });
+
+    const virt_kernel = b.createModule(.{
+        .root_source_file = b.path("src/virt_kernel/main.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "uart", .module = uart},
+            .{.name = "mm", .module = mm},
+            .{.name = "arm", .module = arm},
         }
     });
 
     const root_module = b.createModule(.{
         .root_source_file = b.path("./src/kernel.zig"),
         .target = target,
-        .optimize = .Debug,
-        // .optimize = .ReleaseSafe,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
             .{.name = "utils", .module = utils},
             .{.name = "uart", .module = uart},
-            .{.name = "mm", .module = mm},
+            .{.name = "virt_kernel", .module = virt_kernel},
         }
     });
 

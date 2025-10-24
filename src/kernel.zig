@@ -2,8 +2,7 @@ const uart = @import("uart");
 const std = @import("std");
 const utils = @import("utils");
 const fdt = @import("fdt/fdt.zig");
-const mm = @import("mm");
-const page_alloc = mm.page_alloc;
+const virt_kernel = @import("virt_kernel");
 
 export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
     uart.setUartBase(0x09000000);
@@ -33,14 +32,10 @@ export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
     if(accessor.structs.findNameStartsWith("memory")) |memory_block_ptr| {
         var memory_block = fdt.node.FdtNode.init(memory_block_ptr);
         if(memory_block.getPropByName(&accessor, "reg")) |prop| {
-            prop.printName();
-            uart.print(": ", void);
-            prop.printValue();
-            uart.print("\n", void);
             const mem_start = fdt.readRegFromCells(address_cells, prop.data);
             const mem_size = fdt.readRegFromCells(size_cells, @ptrCast(prop.data + (@sizeOf(u32) * address_cells)));
-            mm.initMemory(mem_start, mem_size) catch {
-                @panic("error init mm");
+            virt_kernel.initVirtKernel(mem_start, mem_size) catch {
+                @panic("error init virt kernel");
             };
         } else {
             @panic("reg not found");
@@ -48,8 +43,6 @@ export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
     } else {
         @panic("memory not found");
     }
-
-    uart.print("yoo we in infinite loop part\n", .{});
 
     while (true) {}
 }
