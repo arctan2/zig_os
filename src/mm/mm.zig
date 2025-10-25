@@ -33,6 +33,8 @@ pub fn initMMUHigherHalfKernel(mem_start: usize, mem_size: usize, higher_half_ma
         idx += 1;
     }
 
+    try kernel_virt_mem.kernelMapSection(kernel_global.VECTOR_TABLE_BASE, 0x00000000);
+
     const newUartBase = kernel_global.MMIO_BASE + uart.getUartBase();
     try kernel_virt_mem.kernelMapSection(newUartBase, uart.getUartBase());
     uart.setUartBase(newUartBase);

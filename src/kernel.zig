@@ -11,17 +11,23 @@ export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
 
     var accessor = fdt.accessor.Accessor.init(fdt_base, &fdt_header);
 
-    var root_node = fdt.node.FdtNode.init(accessor.structs.base);
+    const root_node = accessor.structs.base;
     var address_cells: u32 = 0;
     var size_cells: u32 = 0;
 
-    if(root_node.getPropByName(&accessor, "#address-cells")) |prop| {
+    if(accessor.getPropByName(root_node, "#address-cells")) |prop| {
         address_cells = std.mem.readInt(u32, @ptrCast(prop.data), .big);
     } else {
         @panic("#address-cells not found\n");
     }
 
-    if(root_node.getPropByName(&accessor, "#size-cells")) |prop| {
+    if(accessor.getPropByName(root_node, "#size-cells")) |prop| {
+        size_cells = std.mem.readInt(u32, @ptrCast(prop.data), .big);
+    } else {
+        @panic("#size-cells not found\n");
+    }
+
+    if(accessor.getPropByName(root_node, "#size-cells")) |prop| {
         size_cells = std.mem.readInt(u32, @ptrCast(prop.data), .big);
     } else {
         @panic("#size-cells not found\n");
@@ -29,20 +35,37 @@ export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
 
     uart.print("addr_cells: {x}, size_cells: {x}\n", .{address_cells, size_cells});
 
-    if(accessor.structs.findNameStartsWith("memory")) |memory_block_ptr| {
-        var memory_block = fdt.node.FdtNode.init(memory_block_ptr);
-        if(memory_block.getPropByName(&accessor, "reg")) |prop| {
-            const mem_start = fdt.readRegFromCells(address_cells, prop.data);
-            const mem_size = fdt.readRegFromCells(size_cells, @ptrCast(prop.data + (@sizeOf(u32) * address_cells)));
-            virt_kernel.initVirtKernel(mem_start, mem_size) catch {
-                @panic("error init virt kernel");
-            };
+    if(accessor.findNodeWithProp(root_node, "msi-controller")) |node| {
+        if(accessor.findParent(node)) |_| {
         } else {
-            @panic("reg not found");
+            uart.print("parent not found\n", void);
         }
+        // if(memory_block.getPropByName(&accessor, "reg")) |prop| {
+        //     const mem_start = fdt.readRegFromCells(address_cells, prop.data);
+        //     const mem_size = fdt.readRegFromCells(size_cells, @ptrCast(prop.data + (@sizeOf(u32) * address_cells)));
+        //     virt_kernel.initVirtKernel(mem_start, mem_size) catch {
+        //         @panic("error init virt kernel");
+        //     };
+        // } else {
+        //     @panic("reg not found");
+        // }
     } else {
-        @panic("memory not found");
+        @panic("interrupt controller not found");
     }
+
+    // if(accessor.findNode(root_node, "memory")) |memory_block| {
+    //     if(accessor.getPropByName(memory_block, "reg")) |prop| {
+    //         const mem_start = fdt.readRegFromCells(address_cells, prop.data);
+    //         const mem_size = fdt.readRegFromCells(size_cells, @ptrCast(prop.data + (@sizeOf(u32) * address_cells)));
+    //         virt_kernel.initVirtKernel(mem_start, mem_size) catch {
+    //             @panic("error init virt kernel");
+    //         };
+    //     } else {
+    //         @panic("reg not found");
+    //     }
+    // } else {
+    //     @panic("memory not found");
+    // }
 
     while (true) {}
 }

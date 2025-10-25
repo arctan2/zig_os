@@ -1,6 +1,7 @@
 pub const KERNEL_VIRT_BASE = 0xC0000000;
 pub var KERNEL_VIRT_OFFSET: usize = 0;
 pub const MMIO_BASE = 0xF0000000;
+pub const VECTOR_TABLE_BASE = 0xFFFF0000;
 
 pub extern var _kernel_end: u8;
 pub extern var _kernel_start: u8;
