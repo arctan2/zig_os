@@ -5,8 +5,6 @@ SECTIONS
     . = 0x40000000;
 	_kernel_start = .;
 
-    /*. = 0x8000;*/
-
     .text : {
         KEEP(*(.vectors))
         *(.text*)

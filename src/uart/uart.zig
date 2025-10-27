@@ -1,4 +1,5 @@
 const std = @import("std");
+const mmio = @import("mmio");
 
 var UART_BASE: usize = undefined;
 var UART_DR: *volatile u32 = undefined;

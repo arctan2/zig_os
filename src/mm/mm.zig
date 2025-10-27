@@ -1,44 +1,45 @@
 const std = @import("std");
 const uart = @import("uart");
 const arm = @import("arm");
+const fdt = @import("fdt");
+const mmio = @import("mmio");
 pub const page_table = @import("page_table.zig");
 pub const virt_mem_handler = @import("virt_mem_handler.zig");
 pub const kernel_global = @import("kernel_global.zig");
 pub const page_alloc = @import("page_alloc.zig");
 
-pub fn initMMUHigherHalfKernel(mem_start: usize, mem_size: usize, higher_half_main: *const fn () void) !noreturn {
-    const kernel_end_addr = std.mem.alignForward(usize, @intFromPtr(&kernel_global._kernel_end), page_alloc.PAGE_SIZE);
-    const kernel_stack = page_alloc.PAGE_SIZE * 4;
-    const kernel_size = kernel_end_addr - mem_start + kernel_stack;
-
-    kernel_global.KERNEL_VIRT_OFFSET = kernel_global.KERNEL_VIRT_BASE - mem_start;
-
-    _ = page_alloc.initGlobal(kernel_end_addr + kernel_stack, mem_size - kernel_size);
-
-    const mem_end = mem_start + mem_size;
+pub fn identityMapKernel(
+    kernel_bounds: *const kernel_global.KernelBounds,
+    fdt_base: [*]const u8,
+    kernel_virt_mem: *virt_mem_handler.VirtMemHandler
+) !void {
+    kernel_global.KERNEL_VIRT_OFFSET = kernel_global.KERNEL_VIRT_BASE - kernel_bounds.start;
 
     const kernel_start_addr = std.mem.alignForward(usize, @intFromPtr(&kernel_global._kernel_start), 8);
-    var kernel_virt_mem = try virt_mem_handler.VirtMemHandler.init();
 
     for(0..4) |i| {
-        const addr = kernel_start_addr + (0x10_0000 * i);
+        const addr = kernel_start_addr + (page_alloc.SECTION_SIZE * i);
         try kernel_virt_mem.kernelMapSection(addr, addr);
     }
 
     var cur_phys_addr: usize = kernel_start_addr;
     var idx: usize = 0;
-    while(cur_phys_addr < mem_end) {
-        try kernel_virt_mem.kernelMapSection(kernel_global.KERNEL_VIRT_BASE + (0x10_0000 * idx), cur_phys_addr);
-        cur_phys_addr += 0x10_0000;
+    while(cur_phys_addr < kernel_bounds.end) {
+        try kernel_virt_mem.kernelMapSection(kernel_global.KERNEL_VIRT_BASE + (page_alloc.SECTION_SIZE * idx), cur_phys_addr);
+        cur_phys_addr += page_alloc.SECTION_SIZE;
         idx += 1;
     }
 
-    try kernel_virt_mem.kernelMapSection(kernel_global.VECTOR_TABLE_BASE, 0x00000000);
+    try kernel_virt_mem.kernelMapSection(kernel_global.VECTOR_TABLE_BASE, kernel_global._kernel_start);
+    try kernel_virt_mem.kernelMapSection(kernel_global.physToVirt(@intFromPtr(fdt_base)), @intFromPtr(fdt_base));
+}
 
-    const newUartBase = kernel_global.MMIO_BASE + uart.getUartBase();
-    try kernel_virt_mem.kernelMapSection(newUartBase, uart.getUartBase());
-    uart.setUartBase(newUartBase);
-
+pub fn transitionToHigherHalf(
+    kernel_bounds: *const kernel_global.KernelBounds,
+    kernel_virt_mem: *virt_mem_handler.VirtMemHandler,
+    higher_half_main: *const fn ([*]const u8) void,
+    fdt_base: [*]const u8
+) noreturn {
     arm.invalidateTLBUnified();
     arm.flushAllCaches();
     arm.enableMMU(@intFromPtr(kernel_virt_mem.l1));
@@ -57,13 +58,13 @@ pub fn initMMUHigherHalfKernel(mem_start: usize, mem_size: usize, higher_half_ma
 
     for(0..4) |i| {
         arm.invalidateTLBUnified();
-        const addr = kernel_start_addr + (0x10_0000 * i);
+        const addr = kernel_bounds.start + (page_alloc.SECTION_SIZE * i);
         kernel_virt_mem.kernelUnmapSection(addr);
     }
 
-    const f = @as(*const fn () void, @ptrFromInt(kernel_global.physToVirt(@intFromPtr(higher_half_main))));
+    const f = @as(*const fn ([*]const u8) void, @ptrFromInt(kernel_global.physToVirt(@intFromPtr(higher_half_main))));
 
-    f();
+    f(fdt_base);
 
     while(true) {}
 }

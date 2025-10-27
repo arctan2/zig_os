@@ -34,7 +34,7 @@ pub const MAX_ORDER = 11;
 pub const LAST_ORDER_BLOCK_SIZE = 1 << (MAX_ORDER - 1);
 pub const PAGE_SHIFT = 12;
 pub const PAGE_SIZE = 1 << PAGE_SHIFT;
-pub const SECTION_SIZE = 0x100000;
+pub const SECTION_SIZE = 0x10_0000;
 
 pub const AllocError = error{
     InvalidValue,
@@ -287,7 +287,7 @@ pub var global_page_alloc: PageAllocator = undefined;
 pub fn initGlobal(
     start_addr: usize,
     size_bytes: usize
-) usize {
+) void {
     // TODO: handle not-a-power of two total_pages
 
     const total_pages = @divTrunc(size_bytes, PAGE_SIZE);
@@ -356,8 +356,6 @@ if(!builtin.is_test) {
         .total_pages = total_pages,
         .mapped_pages = mapped_pages_count
     };
-
-    return free_pages_start;
 }
 
 pub fn allocPages(pages_count: usize) AllocError!*Page {

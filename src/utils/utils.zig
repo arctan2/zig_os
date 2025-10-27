@@ -1,4 +1,5 @@
 const std = @import("std");
+pub const ptr = @import("./ptr.zig");
 
 pub fn bigToNative(comptime T: type, s: T) T {
     return std.mem.bigToNative(T, s);
