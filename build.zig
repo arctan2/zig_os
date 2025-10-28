@@ -24,6 +24,42 @@ fn runTests(b: *std.Build) void {
     test_step.dependOn(&run_unit_tests.step);
 }
 
+fn runCommands(b: *std.Build) void {
+    // const dtb = "./device_trees/kernel.dtb";
+    const kernel_bin = "zig-out/bin/kernel";
+
+    const run_command = [_][]const u8 {
+        "qemu-system-arm",
+        "-M", "virt,gic-version=2",
+        "-cpu", "cortex-a7",
+        "-nographic",
+        "-m", "512",
+        "-kernel", kernel_bin,
+    };
+
+    const run = b.addSystemCommand(&run_command);
+    run.step.dependOn(b.getInstallStep());
+    b.step("run", "run kernel in QEMU").dependOn(&run.step);
+
+    const drun = b.addSystemCommand(&(run_command ++ .{"-s", "-S"}));
+    drun.step.dependOn(b.getInstallStep());
+    b.step("drun", "run in qemu for gdb").dependOn(&drun.step);
+
+    const gdb = b.addSystemCommand(&.{"gdb-multiarch", "zig-out/bin/kernel", "-tui", "-x", "init.gdb"});
+    gdb.step.dependOn(b.getInstallStep());
+    b.step("gdb", "run gdb").dependOn(&gdb.step);
+
+    const objdump_input = b.option([]const u8, "dump_to", "objdump to file") orelse "dump.S";
+    const objdump = b.addSystemCommand(&.{"arm-linux-gnueabihf-objdump", "-d", "./zig-out/bin/kernel"});
+    const dump_file = objdump.captureStdOut();
+    const install_dump = b.addInstallFile(dump_file, objdump_input);
+    b.step("objdump", "generate disassembly dump").dependOn(&install_dump.step);
+
+    const objcopy = b.addSystemCommand(&.{"zig", "objcopy", "-O", "binary", "zig-out/bin/kernel", "zig-out/bin/kernel.bin"});
+    objcopy.step.dependOn(b.getInstallStep());
+    b.step("objcopy", "objcopy to binary file").dependOn(&objcopy.step);
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.resolveTargetQuery(.{
         .cpu_arch = .arm,
@@ -136,4 +172,5 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe_gdb);
 
     runTests(b);
+    runCommands(b);
 }
