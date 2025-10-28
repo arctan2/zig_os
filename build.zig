@@ -76,7 +76,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const uart = b.createModule(.{
-        .root_source_file = b.path("src/uart/uart.zig"),
+        .root_source_file = b.path("src/mmio/uart.zig"),
         .target = target,
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{

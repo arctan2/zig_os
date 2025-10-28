@@ -1,6 +1,7 @@
+const uart = @import("uart");
 pub const sctlr = @import("sctlr.zig");
 pub const ttbr = @import("ttbr.zig");
-pub const uart = @import("uart");
+pub const el1_timer = @import("el1_timer.zig");
 
 pub inline fn dsb() void {
     asm volatile ("dsb");

@@ -1,6 +1,7 @@
 const uart = @import("uart");
 const mm = @import("mm");
 const fdt = @import("fdt");
+pub const gic = @import("gic.zig");
 
 pub const MMIOMapper = struct {
     cur_addr: usize = mm.kernel_global.MMIO_BASE,
@@ -16,9 +17,6 @@ pub fn initVirtMapping(kernel_virt_mem: *mm.virt_mem_handler.VirtMemHandler, fdt
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     var mmio_mapper = MMIOMapper{};
 
-    const newUartBase = mmio_mapper.nextAddr() + uart.getUartBase();
-    try kernel_virt_mem.kernelMapSection(newUartBase, uart.getUartBase());
-
     const intr_ctl = fdt_accessor.findNodeWithProp(fdt_accessor.structs.base, "interrupt-controller") orelse {
         @panic("interrupt controller not found.\n");
     };
@@ -32,9 +30,14 @@ pub fn initVirtMapping(kernel_virt_mem: *mm.virt_mem_handler.VirtMemHandler, fdt
     const distr_start = fdt.readRegFromCells(addr_size_cells, reg.data, 0);
     const distr_size = fdt.readRegFromCells(addr_size_cells, reg.data, 1);
     const cpu_iface_start = fdt.readRegFromCells(addr_size_cells, reg.data, 2);
-    const cpu_iface_size = fdt.readRegFromCells(addr_size_cells, reg.data, 3);
 
-    uart.print("{x}, {x}, {x}, {x}\n", .{distr_start, distr_size, cpu_iface_start, cpu_iface_size});
+    const new_uart_base = mmio_mapper.nextAddr();
+    const new_gic_base = mmio_mapper.nextAddr();
 
-    uart.setUartBase(newUartBase);
+    try kernel_virt_mem.kernelMapSection(new_gic_base, @min(distr_start, cpu_iface_start));
+    try kernel_virt_mem.kernelMapSection(new_uart_base, uart.getUartBase());
+
+    gic.D.setBase(new_gic_base);
+    gic.C.setBase(new_gic_base + distr_size);
+    uart.setBase(new_uart_base);
 }

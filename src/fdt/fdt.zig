@@ -10,7 +10,17 @@ const AddrSizeCells = struct {
     size: u32
 };
 
-pub inline fn readRegFromCells(addr_size_cells: AddrSizeCells, ptr: [*]const u8, idx: usize) usize {
+const InterruptProp = struct {
+    intr_type: enum(u32) {
+        SPI = 0,
+        PPI = 1,
+        SGI = 2
+    },
+    irq_number: u32,
+    flags: u32
+};
+
+pub fn readRegFromCells(addr_size_cells: AddrSizeCells, ptr: [*]const u8, idx: usize) usize {
     const p: [*]const u8 = @ptrCast(ptr + (idx * (@sizeOf(u32) * addr_size_cells.addr)));
     return @intCast(switch(addr_size_cells.size) {
         0x1 => std.mem.readInt(u32, @ptrCast(p), .big),
@@ -18,6 +28,18 @@ pub inline fn readRegFromCells(addr_size_cells: AddrSizeCells, ptr: [*]const u8,
         0x3 => std.mem.readInt(u128, @ptrCast(p), .big),
         else => 0
     });
+}
+
+pub fn readInterruptProp(ptr: [*]const u8, idx: usize) InterruptProp {
+    const p: [*]const u8 = @ptrCast(ptr + (idx * @sizeOf(u32) * 3));
+    const intr_type = std.mem.readInt(u32, @ptrCast(p), .big);
+    const irq_number = std.mem.readInt(u32, @ptrCast(p + @sizeOf(u32)), .big);
+    const flags = std.mem.readInt(u32, @ptrCast(p + (@sizeOf(u32) * 2)), .big);
+    return .{
+        .intr_type = @enumFromInt(intr_type),
+        .irq_number = irq_number,
+        .flags = flags
+    };
 }
 
 pub const FdtNodeProp = struct {

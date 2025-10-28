@@ -10,7 +10,6 @@ pub const page_alloc = @import("page_alloc.zig");
 
 pub fn identityMapKernel(
     kernel_bounds: *const kernel_global.KernelBounds,
-    fdt_base: [*]const u8,
     kernel_virt_mem: *virt_mem_handler.VirtMemHandler
 ) !void {
     kernel_global.KERNEL_VIRT_OFFSET = kernel_global.KERNEL_VIRT_BASE - kernel_bounds.start;
@@ -21,7 +20,14 @@ pub fn identityMapKernel(
         const addr = kernel_start_addr + (page_alloc.SECTION_SIZE * i);
         try kernel_virt_mem.kernelMapSection(addr, addr);
     }
+}
 
+pub fn mapToHigherAddress(
+    kernel_bounds: *const kernel_global.KernelBounds,
+    fdt_base: [*]const u8,
+    kernel_virt_mem: *virt_mem_handler.VirtMemHandler
+) !void {
+    const kernel_start_addr = std.mem.alignForward(usize, @intFromPtr(&kernel_global._kernel_start), 8);
     var cur_phys_addr: usize = kernel_start_addr;
     var idx: usize = 0;
     while(cur_phys_addr < kernel_bounds.end) {
@@ -64,7 +70,7 @@ pub fn transitionToHigherHalf(
 
     const f = @as(*const fn ([*]const u8) void, @ptrFromInt(kernel_global.physToVirt(@intFromPtr(higher_half_main))));
 
-    f(fdt_base);
+    f(@ptrFromInt(kernel_global.physToVirt(@intFromPtr(fdt_base))));
 
     while(true) {}
 }

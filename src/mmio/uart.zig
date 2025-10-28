@@ -5,7 +5,7 @@ var UART_BASE: usize = undefined;
 var UART_DR: *volatile u32 = undefined;
 var UART_FR: *volatile u32 = undefined;
 
-pub fn setUartBase(base: usize) void {
+pub fn setBase(base: usize) void {
     UART_BASE = base;
     UART_DR = @ptrFromInt(UART_BASE + 0x00);
     UART_FR = @ptrFromInt(UART_BASE + 0x18);

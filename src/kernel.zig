@@ -5,7 +5,7 @@ const fdt = @import("fdt");
 const virt_kernel = @import("virt_kernel");
 
 export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) void {
-    uart.setUartBase(0x09000000);
+    uart.setBase(0x09000000);
 
     var fdt_accessor = fdt.Accessor.init(fdt_base);
 
