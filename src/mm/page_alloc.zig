@@ -282,7 +282,15 @@ pub const PageAllocator = struct {
     }
 };
 
-pub var global_page_alloc: PageAllocator = undefined;
+var _global_page_alloc: PageAllocator = .{
+    .base_addr = @intCast(0),
+    .pages = @ptrFromInt(0x8),
+    .free_list = .{null} ** 11,
+    .total_pages = @intCast(0),
+    .mapped_pages = @intCast(0)
+};
+
+pub var global_page_alloc: *PageAllocator = &_global_page_alloc;
 
 pub fn initGlobal(
     start_addr: usize,
@@ -349,13 +357,11 @@ if(!builtin.is_test) {
 
     free_list[MAX_ORDER - 1] = &pages_meta_data[0];
 
-    global_page_alloc = .{
-        .base_addr = free_pages_start,
-        .pages = pages_meta_data,
-        .free_list = free_list,
-        .total_pages = total_pages,
-        .mapped_pages = mapped_pages_count
-    };
+    global_page_alloc.base_addr = free_pages_start;
+    global_page_alloc.pages = pages_meta_data;
+    global_page_alloc.free_list = free_list;
+    global_page_alloc.total_pages = total_pages;
+    global_page_alloc.mapped_pages = mapped_pages_count;
 }
 
 pub fn allocPages(pages_count: usize) AllocError!*Page {

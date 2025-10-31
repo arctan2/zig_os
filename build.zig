@@ -90,15 +90,6 @@ pub fn build(b: *std.Build) void {
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
     });
 
-    const arm = b.createModule(.{
-        .root_source_file = b.path("src/arm/arm.zig"),
-        .target = target,
-        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
-        .imports = &.{
-            .{.name = "uart", .module = uart},
-        }
-    });
-
     const fdt = b.createModule(.{
         .root_source_file = b.path("src/fdt/fdt.zig"),
         .target = target,
@@ -106,6 +97,16 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{.name = "utils", .module = utils},
             .{.name = "uart", .module = uart},
+        }
+    });
+
+    const arm = b.createModule(.{
+        .root_source_file = b.path("src/arm/arm.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "uart", .module = uart},
+            .{.name = "fdt", .module = fdt},
         }
     });
 
@@ -124,6 +125,20 @@ pub fn build(b: *std.Build) void {
     mmio.addImport("mm", mm);
     mmio.addImport("uart", uart);
     mmio.addImport("fdt", fdt);
+    mmio.addImport("utils", utils);
+
+    const devices = b.createModule(.{
+        .root_source_file = b.path("src/devices/devices.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+            .{.name = "arm", .module = arm},
+            .{.name = "fdt", .module = fdt},
+            .{.name = "mmio", .module = mmio},
+        }
+    });
 
     const virt_kernel = b.createModule(.{
         .root_source_file = b.path("src/virt_kernel/main.zig"),
@@ -136,6 +151,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "fdt", .module = fdt},
             .{.name = "utils", .module = utils},
             .{.name = "mmio", .module = mmio},
+            .{.name = "devices", .module = devices},
         }
     });
 

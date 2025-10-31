@@ -1,16 +1,20 @@
 const std = @import("std");
 const mm = @import("mm");
+const kernel_global = mm.kernel_global;
 const uart = @import("uart");
-const kernel_global = @import("mm").kernel_global;
 const arm = @import("arm");
 const fdt = @import("fdt");
 const utils = @import("utils");
 const mmio = @import("mmio");
-const enable_interrupts = @import("enable_interrupts.zig");
-const _ = @import("interrupt_handlers.zig");
+const devices = @import("devices");
+const ih = @import("interrupt_handlers.zig");
+const vt = @import("vector_table.zig");
 
-pub fn initVirtKernel(mem_start: usize, mem_size: usize, fdt_base: [*]const u8) !noreturn {
-    const kernel_bounds = kernel_global.KernelBounds.init(mem_start, mem_size);
+pub fn initVirtKernel(fdt_base: [*]const u8) !noreturn {
+    const mem = fdt.getMemStartSize(fdt_base);
+    const kernel_bounds = kernel_global.KernelBounds.init(mem.start, mem.size);
+
+    kernel_bounds.print();
 
     mm.page_alloc.initGlobal(kernel_bounds.free_region_start, kernel_bounds.free_region_size);
     var kernel_virt_mem = try mm.virt_mem_handler.VirtMemHandler.init();
@@ -22,24 +26,49 @@ pub fn initVirtKernel(mem_start: usize, mem_size: usize, fdt_base: [*]const u8) 
 }
 
 fn higherHalfMain(fdt_base: [*]const u8) void {
+    // force zig to actually include the files
+    // removing this is causing the vector tables to not exist in
+    // the compiled binary currently
+    _ = ih.irq_handler;
+    _ = vt._irq_handler;
+    uart.print("global_page_alloc = {x}\n", .{@intFromPtr(mm.page_alloc.global_page_alloc)});
+
+    const mem = fdt.getMemStartSize(fdt_base);
+    const kernel_bounds = kernel_global.KernelBounds.init(mem.start, mem.size);
     const fdt_accessor = fdt.Accessor.init(fdt_base);
-    enableInterrupts(&fdt_accessor);
-    enableTimers();
+    setupInterrupts(&fdt_accessor);
+    removeIdentityKernelMap(&kernel_bounds);
+    enableInterrupts();
+    while(true) {}
 }
 
-fn enableInterrupts(fdt_accessor: *const fdt.Accessor) void {
-    var sctlr = arm.sctlr.read();
-    sctlr.V = 1;
-    arm.sctlr.write(sctlr);
+fn removeIdentityKernelMap(kernel_bounds: *const kernel_global.KernelBounds) void {
+    const l1: *mm.page_table.L1PageTable = @ptrFromInt(kernel_global.physToVirt(arm.ttbr.read(1)));
+    var virt_t = mm.virt_mem_handler.VirtMemHandler{.l1 = l1};
 
-    mmio.gic.C.init();
-    mmio.gic.D.init();
-
-    enable_interrupts.timer(fdt_accessor);
+    for(0..4) |i| {
+        const addr = kernel_bounds.kstart + (mm.page_alloc.SECTION_SIZE * i);
+        virt_t.kernelUnmapSection(addr);
+    }
 }
 
-fn enableTimers() void {
-    arm.el1_timer.init();
-    arm.el1_timer.setTval(625000);
+fn setupInterrupts(fdt_accessor: *const fdt.Accessor) void {
+    arm.vbar.write(kernel_global.VECTOR_TABLE_BASE);
+
+    mmio.gicv2.D.init();
+    mmio.gicv2.C.init();
+
+    devices.timers.setup(fdt_accessor);
+    arm.generic_timer.setTval(arm.generic_timer.cntfrq);
+}
+
+fn enableInterrupts() void {
+    asm volatile("cpsie i");
+
+    devices.timers.enable();
+
+    arm.isr.read().print();
+
+    uart.print("interrupts on\n", void);
 }
 

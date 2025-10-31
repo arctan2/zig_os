@@ -20,3 +20,20 @@ pub fn isAllTestMode() bool {
 pub fn newPrng() std.Random.Xoshiro256 {
     return std.Random.Xoshiro256.init(@intCast(std.time.nanoTimestamp()));
 }
+
+pub fn read32(reg: u32) u32 {
+    return @as(*volatile u32, @ptrFromInt(reg)).*;
+}
+
+pub fn write32(reg: u32, val: u32) void {
+    @as(*volatile u32, @ptrFromInt(reg)).* = val;
+}
+
+pub fn read8(reg: u32) u8 {
+    return @as(*volatile u8, @ptrFromInt(reg)).*;
+}
+
+pub fn write8(reg: u32, val: u8) void {
+    @as(*volatile u8, @ptrFromInt(reg)).* = val;
+}
+

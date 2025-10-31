@@ -77,7 +77,7 @@ pub fn putHex(comptime T: type, num: T) void {
     }
 
     if (n == 0) {
-        putc('0');
+        puts("00000000");
         return;
     }
 

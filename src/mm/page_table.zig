@@ -37,9 +37,10 @@ pub const L1PageTable = struct {
     entries: [4096]usize,
 
     pub fn init() !*L1PageTable {
-        const self_page = try page_alloc.allocPages(1);
+        const self_page = try page_alloc.allocPages(4);
         const self: *L1PageTable = @ptrFromInt(page_alloc.pageToPhys(self_page));
         @memset(&self.entries, 0);
+        uart.print("self.entries: {x}, self: {x}\n", .{@intFromPtr(&self.entries), @intFromPtr(self)});
         return self;
     }
 
@@ -55,7 +56,7 @@ pub const L1PageTable = struct {
     }
 
     pub fn print(self: *L1PageTable) void {
-        uart.print("--------L1 TABLE----------\n", void);
+        uart.print("--------L1 TABLE ({x})----------\n", .{@intFromPtr(self)});
         var i: usize = 0;
         while(i < self.entries.len) : (i += 1) {
             const e = self.entries[i];
@@ -102,27 +103,11 @@ pub const LargePage = packed struct {
 pub const L2PageTable = struct {
     entries: [256]usize,
 
-    pub fn init() !*L1PageTable {
+    pub fn init() !*L2PageTable {
         const self_page = try page_alloc.allocPages(1);
-        const self: *L1PageTable = @ptrFromInt(page_alloc.pageToPhys(self_page));
+        const self: *L2PageTable = @ptrFromInt(page_alloc.pageToPhys(self_page));
         @memset(&self.entries, 0);
         return self;
-    }
-
-    pub inline fn getEntryType(self: *const L1PageTable, idx: u8) L1EntryType {
-        return @enumFromInt(@as(u2, @intCast(self.entries[idx])) & 0b11);
-    }
-
-    // pub fn mapEntry(self: *L2PageTable, idx: u8, addr: u20, flags: L2EntryFlags) void {
-    //     const entry = self.getEntry(idx);
-    //     entry.* = addr | flags;
-    // }
-
-    pub inline fn getEntryAs(self: *L2PageTable, comptime T: type, idx: u8) *T {
-        return @ptrCast(&self.entries[idx]);
-    }
-
-    pub fn freeTable(_: *L1PageTable) void {
     }
 
     pub fn print(self: *L2PageTable) void {

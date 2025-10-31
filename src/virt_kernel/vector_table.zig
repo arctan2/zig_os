@@ -1,4 +1,4 @@
-export fn vector_table() align(32) linksection(".vectors") callconv(.naked) void {
+pub export fn _kernel_start() linksection(".vectors") callconv(.naked) void {
     asm volatile (
         \\ ldr pc, =_reset_handler
         \\ ldr pc, =_undef_handler
@@ -11,7 +11,7 @@ export fn vector_table() align(32) linksection(".vectors") callconv(.naked) void
     );
 }
 
-export fn _irq_handler() callconv(.naked) void {
+pub export fn _irq_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
@@ -21,7 +21,7 @@ export fn _irq_handler() callconv(.naked) void {
     );
 }
 
-export fn _reset_handler() callconv(.naked) void {
+pub export fn _reset_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
@@ -31,7 +31,7 @@ export fn _reset_handler() callconv(.naked) void {
     );
 }
 
-export fn _undef_handler() callconv(.naked) void {
+pub export fn _undef_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
@@ -41,7 +41,7 @@ export fn _undef_handler() callconv(.naked) void {
     );
 }
 
-export fn _svc_handler() callconv(.naked) void {
+pub export fn _svc_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
@@ -51,7 +51,7 @@ export fn _svc_handler() callconv(.naked) void {
     );
 }
 
-export fn _pabort_handler() callconv(.naked) void {
+pub export fn _pabort_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
@@ -61,7 +61,7 @@ export fn _pabort_handler() callconv(.naked) void {
     );
 }
 
-export fn _dabort_handler() callconv(.naked) void {
+pub export fn _dabort_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
@@ -71,7 +71,7 @@ export fn _dabort_handler() callconv(.naked) void {
     );
 }
 
-export fn _fiq_handler() callconv(.naked) void {
+pub export fn _fiq_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
@@ -80,5 +80,4 @@ export fn _fiq_handler() callconv(.naked) void {
         \\ subs pc, lr, #0
     );
 }
-
 

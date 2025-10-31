@@ -3,13 +3,20 @@ ENTRY(_start)
 SECTIONS
 {
     . = 0x40000000;
-	_kernel_start = .;
+	
+    .vectors : {
+        KEEP(*(.vectors))
+    }
 
     .text : {
-        KEEP(*(.vectors))
         *(.text*)
         *(.rodata*)
     }
+
+	/DISCARD/ : {
+		*(.ARM.exidx*)
+		*(.ARM.extab*)
+	}
 
     . = ALIGN(8);
 

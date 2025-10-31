@@ -1,7 +1,7 @@
 const uart = @import("uart");
 const mm = @import("mm");
 const fdt = @import("fdt");
-pub const gic = @import("gic.zig");
+pub const gicv2 = @import("gicv2.zig");
 
 pub const MMIOMapper = struct {
     cur_addr: usize = mm.kernel_global.MMIO_BASE,
@@ -37,7 +37,8 @@ pub fn initVirtMapping(kernel_virt_mem: *mm.virt_mem_handler.VirtMemHandler, fdt
     try kernel_virt_mem.kernelMapSection(new_gic_base, @min(distr_start, cpu_iface_start));
     try kernel_virt_mem.kernelMapSection(new_uart_base, uart.getUartBase());
 
-    gic.D.setBase(new_gic_base);
-    gic.C.setBase(new_gic_base + distr_size);
+    gicv2.D.setBase(new_gic_base);
+    gicv2.C.setBase(new_gic_base + distr_size);
+
     uart.setBase(new_uart_base);
 }
