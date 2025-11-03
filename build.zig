@@ -53,6 +53,7 @@ fn runCommands(b: *std.Build) void {
     const objdump = b.addSystemCommand(&.{"arm-linux-gnueabihf-objdump", "-d", "./zig-out/bin/kernel"});
     const dump_file = objdump.captureStdOut();
     const install_dump = b.addInstallFile(dump_file, objdump_input);
+    objdump.step.dependOn(b.getInstallStep());
     b.step("objdump", "generate disassembly dump").dependOn(&install_dump.step);
 
     const objcopy = b.addSystemCommand(&.{"zig", "objcopy", "-O", "binary", "zig-out/bin/kernel", "zig-out/bin/kernel.bin"});
@@ -164,6 +165,9 @@ pub fn build(b: *std.Build) void {
             .{.name = "uart", .module = uart},
             .{.name = "virt_kernel", .module = virt_kernel},
             .{.name = "fdt", .module = fdt},
+            .{.name = "mm", .module = mm},
+            .{.name = "mmio", .module = mmio},
+            .{.name = "arm", .module = arm},
         }
     });
 
@@ -176,16 +180,16 @@ pub fn build(b: *std.Build) void {
     exe.bundle_compiler_rt = true;
     exe.addAssemblyFile(b.path("./src/start.S"));
 
-    const exe_gdb = b.addExecutable(.{
-        .name = "kernel_gdb",
-        .root_module = root_module
-    });
+    // const exe_gdb = b.addExecutable(.{
+    //     .name = "kernel_gdb",
+    //     .root_module = root_module
+    // });
 
-    exe_gdb.setLinkerScript(b.path("./src/linker_gdb.ld"));
-    exe_gdb.bundle_compiler_rt = true;
+    // exe_gdb.setLinkerScript(b.path("./src/linker_gdb.ld"));
+    // exe_gdb.bundle_compiler_rt = true;
 
     b.installArtifact(exe);
-    b.installArtifact(exe_gdb);
+    // b.installArtifact(exe_gdb);
 
     runTests(b);
     runCommands(b);

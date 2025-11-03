@@ -33,10 +33,10 @@ pub const SystemCtrlReg = packed struct(u32) {
     TE: u1, // Thumb Exception enable (1 = exceptions use Thumb state)
 };
 
-pub inline fn read() SystemCtrlReg {
+pub inline fn read() linksection(".text.boot") SystemCtrlReg {
     return asm volatile ("mrc p15, 0, %[val], c1, c0, 0" : [val] "=r" (->SystemCtrlReg));
 }
 
-pub inline fn write(val: SystemCtrlReg) void {
+pub inline fn write(val: SystemCtrlReg) linksection(".text.boot") void {
     asm volatile ("mcr p15, 0, %[val], c1, c0, 0" :: [val] "r" (val));
 }

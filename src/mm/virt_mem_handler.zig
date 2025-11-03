@@ -1,8 +1,8 @@
-const page_table = @import("./page_table.zig");
 const uart = @import("uart");
-const page_alloc = @import("page_alloc.zig");
 const utils = @import("utils");
-const kernel_global = @import("kernel_global.zig");
+const kglobal = @import("kglobal.zig");
+pub const page_alloc = @import("page_alloc.zig");
+pub const page_table = @import("./page_table.zig");
 
 pub const VirtAddress = packed struct(u32) {
     offset: u12,
@@ -62,7 +62,7 @@ pub const VirtMemHandler = struct {
     //                 const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
     //                 const l2_table_page = try page_alloc.allocPages(1);
     //                 const l2_table_phys_addr = page_alloc.pageToPhys(l2_table_page);
-    //                 const l2_table: *page_table.L2PageTable = @ptrFromInt(kernel_global.physToVirt(l2_table_phys_addr));
+    //                 const l2_table: *page_table.L2PageTable = @ptrFromInt(kglobal.physToVirt(l2_table_phys_addr));
     //                 const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
 
     //                 if(l2_entry.type != .Fault) {
@@ -76,7 +76,7 @@ pub const VirtMemHandler = struct {
     //             } else {
     //                 const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
     //                 const section_page = try page_alloc.allocPages(256);
-    //                 const section_phys_addr = kernel_global.physToVirt(page_alloc.pageToPhys(section_page));
+    //                 const section_phys_addr = kglobal.physToVirt(page_alloc.pageToPhys(section_page));
     //                 entry.section_addr = @intCast(section_phys_addr >> 20);
     //                 entry.type = .Section;
     //             }
@@ -85,7 +85,7 @@ pub const VirtMemHandler = struct {
     //         .L2TablePtr => {
     //             const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
     //             const l2_table_phys_addr = page_alloc.pageToPhys(l1_entry.l2_addr);
-    //             const l2_table: *page_table.L2PageTable = @ptrFromInt(kernel_global.physToVirt(l2_table_phys_addr));
+    //             const l2_table: *page_table.L2PageTable = @ptrFromInt(kglobal.physToVirt(l2_table_phys_addr));
     //             const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
 
     //             if(l2_entry.type != .Fault) {

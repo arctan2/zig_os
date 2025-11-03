@@ -1,6 +1,6 @@
 const std = @import("std");
 const mm = @import("mm");
-const kernel_global = mm.kernel_global;
+const kglobal = mm.kglobal;
 const uart = @import("uart");
 const arm = @import("arm");
 const fdt = @import("fdt");
@@ -12,7 +12,7 @@ const vt = @import("vector_table.zig");
 
 pub fn initVirtKernel(fdt_base: [*]const u8) !noreturn {
     const mem = fdt.getMemStartSize(fdt_base);
-    const kernel_bounds = kernel_global.KernelBounds.init(mem.start, mem.size);
+    const kernel_bounds = kglobal.KernelBounds.init(mem.start, mem.size);
 
     kernel_bounds.print();
 
@@ -34,7 +34,7 @@ fn higherHalfMain(fdt_base: [*]const u8) void {
     uart.print("global_page_alloc = {x}\n", .{@intFromPtr(mm.page_alloc.global_page_alloc)});
 
     const mem = fdt.getMemStartSize(fdt_base);
-    const kernel_bounds = kernel_global.KernelBounds.init(mem.start, mem.size);
+    const kernel_bounds = kglobal.KernelBounds.init(mem.start, mem.size);
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     setupInterrupts(&fdt_accessor);
     removeIdentityKernelMap(&kernel_bounds);
@@ -42,8 +42,8 @@ fn higherHalfMain(fdt_base: [*]const u8) void {
     while(true) {}
 }
 
-fn removeIdentityKernelMap(kernel_bounds: *const kernel_global.KernelBounds) void {
-    const l1: *mm.page_table.L1PageTable = @ptrFromInt(kernel_global.physToVirt(arm.ttbr.read(1)));
+fn removeIdentityKernelMap(kernel_bounds: *const kglobal.KernelBounds) void {
+    const l1: *mm.page_table.L1PageTable = @ptrFromInt(kglobal.physToVirt(arm.ttbr.read(1)));
     var virt_t = mm.virt_mem_handler.VirtMemHandler{.l1 = l1};
 
     for(0..4) |i| {
@@ -53,7 +53,7 @@ fn removeIdentityKernelMap(kernel_bounds: *const kernel_global.KernelBounds) voi
 }
 
 fn setupInterrupts(fdt_accessor: *const fdt.Accessor) void {
-    arm.vbar.write(kernel_global.VECTOR_TABLE_BASE);
+    arm.vbar.write(kglobal.VECTOR_TABLE_BASE);
 
     mmio.gicv2.D.init();
     mmio.gicv2.C.init();
