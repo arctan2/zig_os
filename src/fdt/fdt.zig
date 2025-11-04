@@ -152,6 +152,7 @@ pub const Accessor = struct {
             return null;
         }
 
+
         if (self.getPropByName(node, "#size-cells")) |prop| {
             size_cells = std.mem.readInt(u32, @ptrCast(prop.data), .big);
         } else {

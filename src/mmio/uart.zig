@@ -191,7 +191,7 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
     }
 }
 
-pub fn print(comptime fmt: []const u8, args: anytype) void {
+pub fn print(comptime fmt: []const u8, args: anytype) linksection(".text") void {
     comptime var arg_idx = 0;
     comptime var i = 0;
 

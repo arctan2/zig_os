@@ -2,7 +2,6 @@ ENTRY(_start)
 
 VIRT_BASE = 0xC0010000;
 PHYS_BASE = 0x40000000;
-KERNEL_OFFSET = VIRT_BASE - PHYS_BASE;
 
 SECTIONS
 {
@@ -13,9 +12,11 @@ SECTIONS
 
 	. = PHYS_BASE;
 
+	_early_kernel_start = .;
+
 	.text.boot : {
-        *(.text.boot*)
-        *(.rodata*)
+        *(.text.boot)
+        *(.rodata)
 	}
 
 	. = . + 0x4000;
@@ -24,45 +25,42 @@ SECTIONS
 
 	. = ALIGN(16384);
 
-	kernel_l1_page_table = .;
+	_kernel_l1_page_table_phys = .;
 
 	. = . + 0x4000;
 
-	kernel_l1_page_table_end = .;
+	_kernel_l1_page_table_end = .;
 
 	. = ALIGN(8);
-	boot_end_phys = .;
+	_early_kernel_end = .;
 
 	. = VIRT_BASE;
 
-	_kernel_start = .;
+	_vkernel_start = .;
 
-	KERNEL_OFFSET_FROM_BOOT_END = _kernel_start - boot_end_phys;
+	KERNEL_OFFSET = _vkernel_start - _early_kernel_end;
 
-    /* .vectors : AT(ADDR(.vectors) - KERNEL_OFFSET_FROM_BOOT_END) {
+    .vectors : AT(ADDR(.vectors) - KERNEL_OFFSET) {
         KEEP(*(.vectors))
     }
-	*/
 
-    .text : AT(ADDR(.text) - KERNEL_OFFSET_FROM_BOOT_END) {
-        *(.text*)
+    .text : AT(ADDR(.text) - KERNEL_OFFSET) {
+        *(.text)
         *(.rodata*)
     }
 
     . = ALIGN(8);
 
-    .data : AT(ADDR(.data) - KERNEL_OFFSET_FROM_BOOT_END) { *(.data) }
-    .bss  : AT(ADDR(.bss) - KERNEL_OFFSET_FROM_BOOT_END) { *(.bss) *(COMMON) }
+    .data : AT(ADDR(.data) - KERNEL_OFFSET) { *(.data) }
+    .bss  : AT(ADDR(.bss) - KERNEL_OFFSET) { *(.bss) *(COMMON) }
 
-	.stack : AT(ADDR(.stack) - KERNEL_OFFSET_FROM_BOOT_END) {
-		. = ALIGN(8);
-		. += 0x8000;
-		. = ALIGN(8);
-		_stack_top = .;
-	}
+	. = ALIGN(8);
+	. += 0x8000;
+	. = ALIGN(8);
+	_vstack_top = .;
 
 	. = . + 8;
     . = ALIGN(8);
-	_kernel_end = .;
+	_vkernel_end = .;
 }
 

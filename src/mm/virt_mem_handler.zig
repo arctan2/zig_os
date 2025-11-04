@@ -25,29 +25,13 @@ pub const VirtMemHandler = struct {
 
     pub fn kernelMapSection(self: *VirtMemHandler, virt: usize, phys: usize) !void {
         const virt_addr: VirtAddress = @bitCast(virt);
-        const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
+        const entry: *page_table.SectionEntry = @ptrCast(&self.l1.entries[virt_addr.l1_idx]);
         entry.section_addr = @intCast(phys >> 20);
         entry.type = .Section;
     }
 
     pub fn kernelUnmapSection(self: *VirtMemHandler, virt: usize) void {
         const virt_addr: VirtAddress = @bitCast(virt);
-        // uart.print(
-        //     \\virt_addr.l1_idx = {} ({x})
-        //     \\self.l1.entries[virt_addr.l1_idx] = {b} ({x}),
-        //     \\unmap: {x},
-        //     \\self.l1: {x},
-        //     \\&self.l1.entries: {x}
-        //     \\
-        //     \\
-        //     ,.{
-        //         virt_addr.l1_idx,
-        //         virt_addr.l1_idx,
-        //         self.l1.entries[virt_addr.l1_idx],
-        //         self.l1.entries[virt_addr.l1_idx],
-        //         virt, @intFromPtr(self.l1),
-        //         @intFromPtr(&self.l1.entries)
-        //     });
         self.l1.entries[virt_addr.l1_idx] = 0;
     }
 

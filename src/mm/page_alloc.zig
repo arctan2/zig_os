@@ -282,20 +282,9 @@ pub const PageAllocator = struct {
     }
 };
 
-var _global_page_alloc: PageAllocator = .{
-    .base_addr = @intCast(0),
-    .pages = @ptrFromInt(0x8),
-    .free_list = .{null} ** 11,
-    .total_pages = @intCast(0),
-    .mapped_pages = @intCast(0)
-};
+pub var global_page_alloc: PageAllocator = undefined;
 
-pub var global_page_alloc: *PageAllocator = &_global_page_alloc;
-
-pub fn initGlobal(
-    start_addr: usize,
-    size_bytes: usize
-) void {
+pub fn initGlobal(start_addr: usize, size_bytes: usize, kernel_offset: usize) void {
     // TODO: handle not-a-power of two total_pages
 
     const total_pages = @divTrunc(size_bytes, PAGE_SIZE);
@@ -303,7 +292,7 @@ pub fn initGlobal(
     const mapped_pages_count = last_order_chunks_count * LAST_ORDER_BLOCK_SIZE;
     const pages_meta_data_size_bytes = total_pages * @sizeOf(Page);
     const free_pages_start = std.mem.alignForward(usize, start_addr + pages_meta_data_size_bytes, SECTION_SIZE);
-    const pages_meta_data: [*]Page = @ptrFromInt(start_addr);
+    const pages_meta_data: [*]Page = @ptrFromInt(start_addr + kernel_offset);
 
     var free_list: [MAX_ORDER]?*Page = .{null} ** MAX_ORDER;
     var i: usize = 0;
@@ -357,11 +346,13 @@ if(!builtin.is_test) {
 
     free_list[MAX_ORDER - 1] = &pages_meta_data[0];
 
-    global_page_alloc.base_addr = free_pages_start;
-    global_page_alloc.pages = pages_meta_data;
-    global_page_alloc.free_list = free_list;
-    global_page_alloc.total_pages = total_pages;
-    global_page_alloc.mapped_pages = mapped_pages_count;
+    global_page_alloc = .{
+        .base_addr = free_pages_start,
+        .pages = pages_meta_data,
+        .free_list = free_list,
+        .total_pages = total_pages,
+        .mapped_pages = mapped_pages_count,
+    };
 }
 
 pub fn allocPages(pages_count: usize) AllocError!*Page {
@@ -389,7 +380,7 @@ test "allocate and deallocate 1 block in every order" {
 
     const start = @intFromPtr(@as([*]u8, @ptrCast(memory)));
 
-    _ = initGlobal(start, size);
+    _ = initGlobal(start, size, 0);
 
     for(0..MAX_ORDER) |i| {
         const page = try global_page_alloc.allocPages(@as(usize, 1) << @intCast(i));
@@ -416,7 +407,7 @@ test "allocate and deallocate at each order" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    _ = initGlobal(start, size);
+    _ = initGlobal(start, size, 0);
 
     for(0..MAX_ORDER) |order| {
         const chunk_size = (@as(usize, 1) << @intCast(order));
@@ -457,7 +448,7 @@ test "basic test case free" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    _ = initGlobal(start, size);
+    _ = initGlobal(start, size, 0);
 
     const a = try global_page_alloc.allocPages(512);
     const b = try global_page_alloc.allocPages(512);
@@ -495,7 +486,7 @@ test "merge test case" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    _ = initGlobal(start, size);
+    _ = initGlobal(start, size, 0);
 
     const a = try global_page_alloc.allocPages(512);
     const b = try global_page_alloc.allocPages(256);
@@ -536,7 +527,7 @@ test "random allocate and deallocate" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    _ = initGlobal(start, size);
+    _ = initGlobal(start, size, 0);
 
     var prng: std.Random.Xoshiro256 = utils.newPrng();
     var rand = prng.random();
@@ -573,7 +564,7 @@ test "loop allocate and deallocate" {
     const total_pages = @divTrunc(size, PAGE_SIZE);
     const last_order_chunks_count = total_pages / LAST_ORDER_BLOCK_SIZE;
 
-    _ = initGlobal(start, size);
+    _ = initGlobal(start, size, 0);
 
     for(0..5) |_| {
         for(0..11) |i| {

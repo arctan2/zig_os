@@ -141,8 +141,8 @@ pub fn build(b: *std.Build) void {
         }
     });
 
-    const virt_kernel = b.createModule(.{
-        .root_source_file = b.path("src/virt_kernel/main.zig"),
+    const kernel = b.createModule(.{
+        .root_source_file = b.path("src/kernel/main.zig"),
         .target = target,
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
@@ -157,16 +157,12 @@ pub fn build(b: *std.Build) void {
     });
 
     const root_module = b.createModule(.{
-        .root_source_file = b.path("./src/kernel.zig"),
+        .root_source_file = b.path("./src/early_kernel.zig"),
         .target = target,
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
-            .{.name = "utils", .module = utils},
-            .{.name = "uart", .module = uart},
-            .{.name = "virt_kernel", .module = virt_kernel},
-            .{.name = "fdt", .module = fdt},
+            .{.name = "kernel", .module = kernel},
             .{.name = "mm", .module = mm},
-            .{.name = "mmio", .module = mmio},
             .{.name = "arm", .module = arm},
         }
     });

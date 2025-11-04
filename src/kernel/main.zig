@@ -10,19 +10,34 @@ const devices = @import("devices");
 const ih = @import("interrupt_handlers.zig");
 const vt = @import("vector_table.zig");
 
-pub fn initVirtKernel(fdt_base: [*]const u8) !noreturn {
+pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
+    kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
+
+    var kvmem = mm.virt_mem_handler.VirtMemHandler{
+        .l1 = @ptrFromInt(arm.ttbr.read(1) + (@intFromPtr(&kglobal._vkernel_start) - @intFromPtr(&kglobal._early_kernel_end)))
+    };
+    uart.setBase(0x09000000);
+    mmio.init(&kvmem, fdt_base);
+
+    uart.print("{x}\n", .{@intFromPtr(kvmem.l1)});
+
     const mem = fdt.getMemStartSize(fdt_base);
-    const kernel_bounds = kglobal.KernelBounds.init(mem.start, mem.size);
+    const kbounds = kglobal.KernelBounds.init(mem.start, mem.size);
 
-    kernel_bounds.print();
+    kbounds.print();
 
-    mm.page_alloc.initGlobal(kernel_bounds.free_region_start, kernel_bounds.free_region_size);
-    var kernel_virt_mem = try mm.virt_mem_handler.VirtMemHandler.init();
+    mm.page_alloc.initGlobal(kbounds.free_region_start, kbounds.free_region_size, kglobal.VIRT_OFFSET);
 
-    try mm.identityMapKernel(&kernel_bounds, &kernel_virt_mem);
-    try mm.mapToHigherAddress(&kernel_bounds, fdt_base, &kernel_virt_mem);
-    mmio.initVirtMapping(&kernel_virt_mem, fdt_base);
-    mm.transitionToHigherHalf(&kernel_bounds, &kernel_virt_mem, &higherHalfMain, fdt_base);
+    mm.mapFreePagesToKernelL1(&kbounds, &kvmem) catch {
+        @panic("error in mapFreePagesToKernelL1");
+    };
+
+    try kvmem.kernelMapSection(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end));
+    mm.unmapIdentityKernel(&kbounds, &kvmem);
+
+    kvmem.l1.print();
+
+    uart.print("yes\n", void);
 }
 
 fn higherHalfMain(fdt_base: [*]const u8) void {
@@ -33,23 +48,10 @@ fn higherHalfMain(fdt_base: [*]const u8) void {
     _ = vt._irq_handler;
     uart.print("global_page_alloc = {x}\n", .{@intFromPtr(mm.page_alloc.global_page_alloc)});
 
-    const mem = fdt.getMemStartSize(fdt_base);
-    const kernel_bounds = kglobal.KernelBounds.init(mem.start, mem.size);
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     setupInterrupts(&fdt_accessor);
-    removeIdentityKernelMap(&kernel_bounds);
     enableInterrupts();
     while(true) {}
-}
-
-fn removeIdentityKernelMap(kernel_bounds: *const kglobal.KernelBounds) void {
-    const l1: *mm.page_table.L1PageTable = @ptrFromInt(kglobal.physToVirt(arm.ttbr.read(1)));
-    var virt_t = mm.virt_mem_handler.VirtMemHandler{.l1 = l1};
-
-    for(0..4) |i| {
-        const addr = kernel_bounds.kstart + (mm.page_alloc.SECTION_SIZE * i);
-        virt_t.kernelUnmapSection(addr);
-    }
 }
 
 fn setupInterrupts(fdt_accessor: *const fdt.Accessor) void {
@@ -72,3 +74,8 @@ fn enableInterrupts() void {
     uart.print("interrupts on\n", void);
 }
 
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
+    uart.puts("panic: ");
+    uart.puts(msg);
+    while (true) {}
+}

@@ -1,58 +1,56 @@
 const std = @import("std");
 const uart = @import("uart");
 const page_alloc = @import("page_alloc.zig");
-pub const KERNEL_VIRT_BASE = 0xC0000000;
-pub var KERNEL_VIRT_OFFSET: usize = 0;
+
+pub var VIRT_OFFSET: usize = 0;
 pub const MMIO_BASE = 0xF0000000;
 pub const VECTOR_TABLE_BASE: usize = 0xFFF00000;
 
-pub extern var _kernel_end: u8;
-pub extern var _kernel_start: u8;
+pub extern const KERNEL_OFFSET: u8;
+pub extern const PHYS_BASE: u8;
+pub extern const VIRT_BASE: u8;
+pub extern const _early_kernel_start: u8;
+pub extern const _early_kernel_end: u8;
+pub extern const _vkernel_start: u8;
+pub extern const _vkernel_end: u8;
+pub extern const _vstack_top: u8;
+pub extern const _kernel_l1_page_table_phys: u8;
 
 pub const KernelBounds = struct {
-    kstart: usize,
-    kend_no_stack: usize,
+    kernel_start_phys: usize,
+    kernel_size_phys: usize,
     free_region_start: usize,
     free_region_size: usize,
-    ksize_with_stack: usize,
 
     pub fn init(mem_start: usize, mem_size: usize) KernelBounds {
-        const kernel_end_addr = std.mem.alignForward(usize, @intFromPtr(&_kernel_end), page_alloc.PAGE_SIZE);
-        const kernel_stack = page_alloc.PAGE_SIZE * 4;
-        const kernel_size = kernel_end_addr - mem_start + kernel_stack;
+        const vkernel_size = @intFromPtr(&_vkernel_end) - @intFromPtr(&_vkernel_start);
+        const early_kernel_size = @intFromPtr(&_early_kernel_end) - @intFromPtr(&_early_kernel_start);
+        const kernel_size_phys = early_kernel_size + vkernel_size;
+        const mem_end = mem_start + mem_size;
+        const free_region_start = mem_start + early_kernel_size;
         return .{
-            .kstart = mem_start,
-            .kend_no_stack = kernel_end_addr,
-            .free_region_start = kernel_end_addr + kernel_stack,
-            .free_region_size = mem_size - kernel_size,
-            .ksize_with_stack = kernel_size,
+            .kernel_start_phys = @intFromPtr(&PHYS_BASE),
+            .kernel_size_phys = kernel_size_phys,
+            .free_region_start = free_region_start,
+            .free_region_size = mem_end - free_region_start,
         };
     }
 
     pub fn print(self: *const KernelBounds) void {
         uart.print(
             \\KernelBounds{{
-            \\  kstart = {x},
-            \\  kend_no_stack = {x},
+            \\  kernel_start_phys = {x},
+            \\  kernel_size_phys = {x},
             \\  free_region_start = {x},
             \\  free_region_size = {x},
-            \\  ksize_with_stack = {x}
             \\}
             \\
         , .{
-            self.kstart,
-            self.kend_no_stack,
+            self.kernel_start_phys,
+            self.kernel_size_phys,
             self.free_region_start,
             self.free_region_size,
-            self.ksize_with_stack,
         });
     }
 };
 
-pub fn physToVirt(phys: usize) usize {
-    return phys + KERNEL_VIRT_OFFSET;
-}
-
-pub fn virtToPhys(virt: usize) usize {
-    return virt - KERNEL_VIRT_OFFSET;
-}
