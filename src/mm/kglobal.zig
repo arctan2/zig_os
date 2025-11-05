@@ -27,7 +27,7 @@ pub const KernelBounds = struct {
         const early_kernel_size = @intFromPtr(&_early_kernel_end) - @intFromPtr(&_early_kernel_start);
         const kernel_size_phys = early_kernel_size + vkernel_size;
         const mem_end = mem_start + mem_size;
-        const free_region_start = mem_start + early_kernel_size;
+        const free_region_start = mem_start + kernel_size_phys;
         return .{
             .kernel_start_phys = @intFromPtr(&PHYS_BASE),
             .kernel_size_phys = kernel_size_phys,

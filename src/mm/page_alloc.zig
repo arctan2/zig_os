@@ -294,8 +294,11 @@ pub fn initGlobal(start_addr: usize, size_bytes: usize, kernel_offset: usize) vo
     const free_pages_start = std.mem.alignForward(usize, start_addr + pages_meta_data_size_bytes, SECTION_SIZE);
     const pages_meta_data: [*]Page = @ptrFromInt(start_addr + kernel_offset);
 
+
     var free_list: [MAX_ORDER]?*Page = .{null} ** MAX_ORDER;
     var i: usize = 0;
+
+    uart.print("{x}\n", .{start_addr});
 
     while(i < total_pages) : (i += 1) {
         pages_meta_data[i] = .{.prev = null, .next = null, .flags = .Reset, .order = 0};

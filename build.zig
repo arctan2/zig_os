@@ -156,25 +156,15 @@ pub fn build(b: *std.Build) void {
         }
     });
 
-    const root_module = b.createModule(.{
-        .root_source_file = b.path("./src/early_kernel.zig"),
-        .target = target,
-        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
-        .imports = &.{
-            .{.name = "kernel", .module = kernel},
-            .{.name = "mm", .module = mm},
-            .{.name = "arm", .module = arm},
-        }
-    });
-
     const exe = b.addExecutable(.{
         .name = "kernel",
-        .root_module = root_module
+        .root_module = kernel
     });
 
     exe.setLinkerScript(b.path("./src/linker.ld"));
     exe.bundle_compiler_rt = true;
     exe.addAssemblyFile(b.path("./src/start.S"));
+    exe.addAssemblyFile(b.path("./src/early_kernel.S"));
 
     // const exe_gdb = b.addExecutable(.{
     //     .name = "kernel_gdb",

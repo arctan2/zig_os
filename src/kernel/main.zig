@@ -7,10 +7,13 @@ const fdt = @import("fdt");
 const utils = @import("utils");
 const mmio = @import("mmio");
 const devices = @import("devices");
-const ih = @import("interrupt_handlers.zig");
-const vt = @import("vector_table.zig");
+pub const ih = @import("interrupt_handlers.zig");
+pub const vt = @import("vector_table.zig");
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
+    _ = ih.irq_handler;
+    _ = vt._irq_handler;
+
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
 
     var kvmem = mm.virt_mem_handler.VirtMemHandler{
@@ -33,21 +36,11 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     };
 
     try kvmem.kernelMapSection(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end));
-    mm.unmapIdentityKernel(&kbounds, &kvmem);
+    // mm.unmapIdentityKernel(&kbounds, &kvmem);
 
     kvmem.l1.print();
 
     uart.print("yes\n", void);
-}
-
-fn higherHalfMain(fdt_base: [*]const u8) void {
-    // force zig to actually include the files
-    // removing this is causing the vector tables to not exist in
-    // the compiled binary currently
-    _ = ih.irq_handler;
-    _ = vt._irq_handler;
-    uart.print("global_page_alloc = {x}\n", .{@intFromPtr(mm.page_alloc.global_page_alloc)});
-
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     setupInterrupts(&fdt_accessor);
     enableInterrupts();
@@ -61,7 +54,7 @@ fn setupInterrupts(fdt_accessor: *const fdt.Accessor) void {
     mmio.gicv2.C.init();
 
     devices.timers.setup(fdt_accessor);
-    arm.generic_timer.setTval(arm.generic_timer.cntfrq);
+    arm.generic_timer.setTval(100000);
 }
 
 fn enableInterrupts() void {

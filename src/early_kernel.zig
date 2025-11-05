@@ -1,3 +1,4 @@
+const std = @import("std");
 const mm = @import("mm");
 const kglobal = mm.kglobal;
 const arm = @import("arm");
@@ -49,7 +50,7 @@ export fn early_kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection("
         kmem.l1.entries[i] = 0;
     }
 
-    for(0..2) |i| {
+    for(0..3) |i| {
         const virt = @intFromPtr(&kglobal.VIRT_BASE) + (mm.page_alloc.SECTION_SIZE * i);
         const phys = @intFromPtr(&kglobal._early_kernel_end) + (mm.page_alloc.SECTION_SIZE * i);
         const ident = @intFromPtr(&kglobal.PHYS_BASE) + (mm.page_alloc.SECTION_SIZE * i);
@@ -57,12 +58,7 @@ export fn early_kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection("
         kernelMapSection(&kmem, virt, phys);
     }
 
-    // this is required because l1 table is there
-    kernelMapSection(
-        &kmem,
-        @intFromPtr(&kglobal.VIRT_BASE) - 0x0010_0000,
-        @intFromPtr(&kglobal._early_kernel_start)
-    );
+    kernelMapSection(&kmem, @intFromPtr(&kglobal.VIRT_BASE) - mm.page_alloc.SECTION_SIZE, @intFromPtr(&kglobal.PHYS_BASE));
 
     arm.enableMMU(@intFromPtr(kmem.l1));
 
@@ -79,4 +75,9 @@ export fn early_kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection("
     );
 
     unreachable;
+}
+
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
+    _ = msg;
+    while (true) {}
 }

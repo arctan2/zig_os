@@ -1,6 +1,6 @@
 ENTRY(_start)
 
-VIRT_BASE = 0xC0010000;
+VIRT_BASE = 0xC0100000;
 PHYS_BASE = 0x40000000;
 
 SECTIONS
@@ -16,8 +16,9 @@ SECTIONS
 
 	.text.boot : {
         *(.text.boot)
-        *(.rodata)
 	}
+
+	.bss.boot : { *(.bss.boot) }
 
 	. = . + 0x4000;
 	. = ALIGN(8);
@@ -31,7 +32,8 @@ SECTIONS
 
 	_kernel_l1_page_table_end = .;
 
-	. = ALIGN(8);
+	. = ALIGN(0x00100000);
+
 	_early_kernel_end = .;
 
 	. = VIRT_BASE;
@@ -46,13 +48,13 @@ SECTIONS
 
     .text : AT(ADDR(.text) - KERNEL_OFFSET) {
         *(.text)
-        *(.rodata*)
     }
 
     . = ALIGN(8);
 
-    .data : AT(ADDR(.data) - KERNEL_OFFSET) { *(.data) }
-    .bss  : AT(ADDR(.bss) - KERNEL_OFFSET) { *(.bss) *(COMMON) }
+    .data : AT(ADDR(.data) - KERNEL_OFFSET) { *(.data*) }
+    .bss  : AT(ADDR(.bss) - KERNEL_OFFSET) { *(.bss*) *(COMMON) }
+	.rodata : AT(ADDR(.rodata) - KERNEL_OFFSET) { *(.rodata) }
 
 	. = ALIGN(8);
 	. += 0x8000;

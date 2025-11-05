@@ -110,17 +110,17 @@ pub var D = struct {
 
     pub fn init(self: *@This()) void {
         for(0..32) |i| {
-            utils.write32(self.ISENABLERn + (i * 4), 0);
+            utils.write32(self.ISENABLERn + (i * 4), 1);
         }
 
         for(0..1020) |i| {
             const reg_addr = self.IPRIORITYRn + i;
-            utils.write8(reg_addr, 0xff);
+            utils.write8(reg_addr, 0x1);
         }
 
         for(0..1024) |i| {
             const reg_addr = self.ITARGETSRn + i;
-            utils.write8(reg_addr, 0x01);
+            utils.write8(reg_addr, 0x1);
         }
 
         for(0..256) |i| {

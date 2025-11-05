@@ -9,7 +9,7 @@ _start:
 	cpsid f
 
 	ldr sp, =_stack_top_early
-	bl early_kernel_main
+	bl early_kernel
 hang:
 	b hang
 
