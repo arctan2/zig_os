@@ -7,6 +7,7 @@ const fdt = @import("fdt");
 const utils = @import("utils");
 const mmio = @import("mmio");
 const devices = @import("devices");
+const gicv2 = mmio.gicv2;
 pub const ih = @import("interrupt_handlers.zig");
 pub const vt = @import("vector_table.zig");
 
@@ -43,10 +44,16 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 }
 
 fn setupInterrupts(fdt_accessor: *const fdt.Accessor) void {
+    var sctlr = arm.sctlr.read();
+    sctlr.V = 0;
+    arm.sctlr.write(sctlr);
     arm.vbar.write(kglobal.VECTOR_TABLE_BASE);
 
-    mmio.gicv2.D.init();
-    mmio.gicv2.C.init();
+    arm.dsb();
+    arm.isb();
+
+    gicv2.D.init();
+    gicv2.C.init();
 
     devices.timers.setup(fdt_accessor);
     devices.timers.GenericTimer.setTval(devices.timers.GenericTimer.cntfrq);
@@ -54,16 +61,7 @@ fn setupInterrupts(fdt_accessor: *const fdt.Accessor) void {
 
 fn enableInterrupts() void {
     asm volatile("cpsie i");
-
     devices.timers.enable();
-
-    const cntp_ctl = arm.generic_timer.read();
-    uart.print("{{ enable: {}, imask: {}, istatus: {} }\n", .{
-        @as(usize, cntp_ctl.enable),
-        @as(usize, cntp_ctl.imask),
-        @as(usize, cntp_ctl.istatus),
-    });
-
     uart.print("interrupts on\n", void);
 }
 

@@ -38,7 +38,6 @@ early_kernel: @ r2 = fdt_base
 	ldr r2, =0x6045
 	orr r1, r1, r2
 	mov r2, #0x2000
-	bic r1, r1, r2 // V = 0
 	mcr p15, 0, r1, c1, c0, 0 // write sctlr
 
 	bl clean_state

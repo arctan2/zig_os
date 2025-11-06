@@ -88,31 +88,3 @@ pub fn curCpuNumber() u8 {
     return @intCast(asm volatile("mrc p15, 0, %[val], c0, c0, 5" : [val] "=r" (->u32)) & 0xFF);
 }
 
-pub inline fn enableMMU(ttbr1: usize) void {
-    invalidateTLBUnified();
-    invalidateBranchPredictor();
-    flushAllCaches();
-
-    ttbr.write(1, ttbr1);
-
-    var ttbcr = ttbr.readTTBCR();
-    var reg = sctlr.read();
-
-    reg.MMU = 1;
-    reg.ICache = 1;
-    reg.DUnifiedCache = 1;
-    reg.DCache = 1;
-    reg.Z = 1;
-
-    ttbcr.N = 2;
-    ttbr.writeTTBCR(ttbcr);
-    ttbr.writeDomain(0xFFFFFFFF);
-    sctlr.write(reg);
-
-    invalidateTLBUnified();
-    invalidateBranchPredictor();
-    flushAllCaches();
-
-    asm volatile ("dsb");
-    asm volatile ("isb");
-}

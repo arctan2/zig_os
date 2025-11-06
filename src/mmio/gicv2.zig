@@ -8,7 +8,16 @@ fn writeRegBit(base: u32, intr_id: u32) void {
     const reg_index = intr_id / 32;
     const bit_index = intr_id % 32;
     const reg_addr = base + (reg_index * 4);
-    utils.write32(reg_addr, @as(u32, 1) << @intCast(bit_index));
+    const reg_val = utils.read32(reg_addr);
+    utils.write32(reg_addr, reg_val | (@as(u32, 1) << @intCast(bit_index)));
+}
+
+fn clearRegBit(base: u32, intr_id: u32) void {
+    const reg_index = intr_id / 32;
+    const bit_index = intr_id % 32;
+    const reg_addr = base + (reg_index * 4);
+    const reg_val = utils.read32(reg_addr);
+    utils.write32(reg_addr, reg_val & ~(@as(u32, 1) << @intCast(bit_index)));
 }
 
 pub const IntrAck = packed struct(u32) {
@@ -172,6 +181,10 @@ pub var D = struct {
         _ = self;
         _ = intr_id;
         _ = config;
+    }
+
+    pub fn clearPending(self: *@This(), intr_id: u10) void {
+        writeRegBit(self.ICPENDRn, intr_id);
     }
 } {};
 
