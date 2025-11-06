@@ -43,7 +43,6 @@ pub fn enable() void {
     cntfrq = asm volatile(
         "mrc p15, 0, %[val], c14, c0, 0"
         : [val] "=r" (->u32)
-        :
     );
 
     var cntp_ctl = read();

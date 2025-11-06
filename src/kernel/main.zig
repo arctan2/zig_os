@@ -22,8 +22,6 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     uart.setBase(0x09000000);
     mmio.init(&kvmem, fdt_base);
 
-    uart.print("{x}\n", .{@intFromPtr(kvmem.l1)});
-
     const mem = fdt.getMemStartSize(fdt_base);
     const kbounds = kglobal.KernelBounds.init(mem.start, mem.size);
 
@@ -38,9 +36,6 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     try kvmem.kernelMapSection(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end));
     mm.unmapIdentityKernel(&kbounds, &kvmem);
 
-    kvmem.l1.print();
-
-    uart.print("yes\n", void);
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     setupInterrupts(&fdt_accessor);
     enableInterrupts();
@@ -54,7 +49,7 @@ fn setupInterrupts(fdt_accessor: *const fdt.Accessor) void {
     mmio.gicv2.C.init();
 
     devices.timers.setup(fdt_accessor);
-    arm.generic_timer.setTval(100000);
+    devices.timers.GenericTimer.setTval(devices.timers.GenericTimer.cntfrq);
 }
 
 fn enableInterrupts() void {
@@ -62,7 +57,12 @@ fn enableInterrupts() void {
 
     devices.timers.enable();
 
-    arm.isr.read().print();
+    const cntp_ctl = arm.generic_timer.read();
+    uart.print("{{ enable: {}, imask: {}, istatus: {} }\n", .{
+        @as(usize, cntp_ctl.enable),
+        @as(usize, cntp_ctl.imask),
+        @as(usize, cntp_ctl.istatus),
+    });
 
     uart.print("interrupts on\n", void);
 }
