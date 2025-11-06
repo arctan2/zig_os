@@ -36,7 +36,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     };
 
     try kvmem.kernelMapSection(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end));
-    // mm.unmapIdentityKernel(&kbounds, &kvmem);
+    mm.unmapIdentityKernel(&kbounds, &kvmem);
 
     kvmem.l1.print();
 
