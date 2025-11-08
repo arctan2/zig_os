@@ -107,8 +107,8 @@ pub var D = struct {
     PIDR: u32 = 0xFD0, // / CIDR RO Impl. defined Peripheral/Component Identification Registers.
 
     const Config = enum(u2) {
-        Level = 0,
-        Edge = 1,
+        Level = 0b00,
+        Edge = 0b10,
     };
 
     pub fn setBase(self: *@This(), distr_start: usize) void {
@@ -132,10 +132,12 @@ pub var D = struct {
             utils.write8(reg_addr, 0x1);
         }
 
-        for(0..256) |i| {
-            const reg_addr = self.ICFGRn + i;
-            utils.write8(reg_addr, @intFromEnum(Config.Level));
+        for(2..64) |i| {
+            const reg_addr = self.ICFGRn + (i * 4);
+            utils.write32(reg_addr, 0);
         }
+
+        self.clearAllPending();
 
         utils.write32(self.CTLR, 1);
     }
@@ -178,13 +180,18 @@ pub var D = struct {
     }
 
     pub fn configure(self: *@This(), intr_id: u32, config: Config) void {
-        _ = self;
-        _ = intr_id;
-        _ = config;
+        const reg_idx = intr_id / 16;
+        const bit_idx = (intr_id % 16) * 2;
+        const reg_addr = self.ICFGRn + (reg_idx * 4);
+        const reg_val = utils.read32(reg_addr);
+        const new_reg_val = (reg_val & ~(@as(u32, 0b11) << @intCast(bit_idx))) | (@as(u32, @intFromEnum(config)) << @intCast(bit_idx));
+        utils.write32(reg_addr, new_reg_val);
     }
 
-    pub fn clearPending(self: *@This(), intr_id: u10) void {
-        writeRegBit(self.ICPENDRn, intr_id);
+    pub fn clearAllPending(self: *@This()) void {
+        for (0..32) |i| {
+            utils.write32(self.ICPENDRn + (i * 4), 0xffffffff);
+        }
     }
 } {};
 

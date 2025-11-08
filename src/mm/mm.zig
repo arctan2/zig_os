@@ -20,3 +20,7 @@ pub fn unmapIdentityKernel(kbounds: *const kglobal.KernelBounds, kvmem: *virt_me
     const addr = kbounds.kernel_start_phys;
     kvmem.kernelUnmapSection(addr);
 }
+
+comptime {
+    std.testing.refAllDecls(virt_mem_handler);
+}

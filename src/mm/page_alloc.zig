@@ -79,7 +79,7 @@ pub const PageAllocator = struct {
         return &self.pages[self.pageIdx(page) ^ (@as(usize, 1) << @intCast(page.order))];
     }
 
-    fn getFreeListLen(self: *PageAllocator, comptime size: usize, order: u8) usize {
+    pub fn getFreeListLen(self: *PageAllocator, comptime size: usize, order: u8) usize {
         var cur = self.free_list[order];
         var count: usize = 0;
 
@@ -364,6 +364,11 @@ pub fn freeBlock(block: *Page) void {
     global_page_alloc.freeBlock(block);
 }
 
+pub fn freeAddr(addr: usize) void {
+    const page = physToPage(addr) orelse return;
+    freeBlock(page);
+}
+
 pub fn pageToPhys(block: *Page) usize {
     return global_page_alloc.pageToPhys(block);
 }
@@ -372,7 +377,8 @@ pub fn physToPage(phys: usize) ?*Page {
     return global_page_alloc.physToPage(phys);
 }
 
-test "allocate and deallocate 1 block in every order" {
+
+test "page_alloc: allocate and deallocate 1 block in every order" {
     const allocator = std.heap.page_allocator;
     const size = (1024 * 1024 * 1024 * 1);
 
@@ -393,7 +399,7 @@ test "allocate and deallocate 1 block in every order" {
     try std.testing.expect(@intFromPtr(global_page_alloc.free_list[MAX_ORDER - 1]) == start);
 }
 
-test "allocate and deallocate at each order" {
+test "page_alloc: allocate and deallocate at each order" {
     if(!utils.isAllTestMode()) return error.SkipZigTest;
 
     const size = (1024 * 1024 * 1024 * 1);
@@ -436,7 +442,7 @@ test "allocate and deallocate at each order" {
     try std.testing.expect(global_page_alloc.getFreeListLen(270000, MAX_ORDER - 1) == last_order_chunks_count);
 }
 
-test "basic test case free" {
+test "page_alloc: basic test case free" {
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
     const memory = try allocator.alloc(u8, size);
@@ -473,7 +479,7 @@ test "basic test case free" {
     try std.testing.expect(global_page_alloc.getFreeListLen(270000, MAX_ORDER - 1) == last_order_chunks_count);
 }
 
-test "merge test case" {
+test "page_alloc: merge test case" {
     if(!utils.isAllTestMode()) return error.SkipZigTest;
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
@@ -514,7 +520,7 @@ test "merge test case" {
     try std.testing.expect(global_page_alloc.getFreeListLen(270000, MAX_ORDER - 1) == last_order_chunks_count);
 }
 
-test "random allocate and deallocate" {
+test "page_alloc: random allocate and deallocate" {
     if(!utils.isAllTestMode()) return error.SkipZigTest;
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
@@ -551,7 +557,7 @@ test "random allocate and deallocate" {
     try std.testing.expect(global_page_alloc.getFreeListLen(270000, MAX_ORDER - 1) == last_order_chunks_count);
 }
 
-test "loop allocate and deallocate" {
+test "page_alloc: loop allocate and deallocate" {
     if(!utils.isAllTestMode()) return error.SkipZigTest;
     const size = (1024 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;

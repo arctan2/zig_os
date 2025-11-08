@@ -1,3 +1,4 @@
+const std = @import("std");
 const uart = @import("uart");
 const utils = @import("utils");
 const kglobal = @import("kglobal.zig");
@@ -10,8 +11,8 @@ pub const VirtAddress = packed struct(u32) {
     l1_idx: u12,
 };
 
-pub const MapFlags = packed struct {
-    is_l2_table_ptr: u1,
+pub const MapFlags = struct {
+    type: enum { Section, L2 },
 };
 
 pub const VirtMemHandler = struct {
@@ -35,53 +36,79 @@ pub const VirtMemHandler = struct {
         self.l1.entries[virt_addr.l1_idx] = 0;
     }
 
-    // // for these to work properly the page allocator base address must be aligned to 1MB
-    // pub fn map(self: *VirtMemHandler, virt: usize, phys: usize, flags: MapFlags) !void {
-    //     const virt_addr: VirtAddress align(32) = @bitCast(virt);
-    //     const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
+    // for these to work properly the page allocator base address must be aligned to 1MB
+    pub fn map(self: *VirtMemHandler, virt: usize, phys: usize, flags: MapFlags) !void {
+        const virt_addr: VirtAddress = @bitCast(virt);
+        const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
 
-    //     switch(entry_type) {
-    //         .Fault => {
-    //             if(flags.is_l2_table_ptr == 1) {
-    //                 const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
-    //                 const l2_table_page = try page_alloc.allocPages(1);
-    //                 const l2_table_phys_addr = page_alloc.pageToPhys(l2_table_page);
-    //                 const l2_table: *page_table.L2PageTable = @ptrFromInt(kglobal.physToVirt(l2_table_phys_addr));
-    //                 const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
+        switch (entry_type) {
+            .Fault => {
+                if (flags.type == .L2) {
+                    const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
+                    const l2_table_page = try page_alloc.allocPages(1);
+                    const l2_table_phys_addr = page_alloc.pageToPhys(l2_table_page);
+                    const l2_table: *page_table.L2PageTable = @ptrFromInt(kglobal.physToVirt(l2_table_phys_addr));
+                    const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
 
-    //                 if(l2_entry.type != .Fault) {
-    //                     return;
-    //                 }
+                    if (l2_entry.type != .Fault) {
+                        return;
+                    }
 
-    //                 l1_entry.l2_addr = @intCast(l2_table_phys_addr >> 12);
-    //                 l1_entry.type = .L2TablePtr;
-    //                 l2_entry.phys_addr = @intCast(phys >> 12);
-    //                 l2_entry.type = .SmallPage;
-    //             } else {
-    //                 const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
-    //                 const section_page = try page_alloc.allocPages(256);
-    //                 const section_phys_addr = kglobal.physToVirt(page_alloc.pageToPhys(section_page));
-    //                 entry.section_addr = @intCast(section_phys_addr >> 20);
-    //                 entry.type = .Section;
-    //             }
-    //             self.l1.print();
-    //         },
-    //         .L2TablePtr => {
-    //             const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
-    //             const l2_table_phys_addr = page_alloc.pageToPhys(l1_entry.l2_addr);
-    //             const l2_table: *page_table.L2PageTable = @ptrFromInt(kglobal.physToVirt(l2_table_phys_addr));
-    //             const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
+                    l1_entry.l2_addr = @intCast(l2_table_phys_addr >> 12);
+                    l1_entry.type = .L2TablePtr;
+                    l2_entry.phys_addr = @intCast(phys >> 12);
+                    l2_entry.type = .SmallPage;
+                } else {
+                    const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
+                    const section_page = try page_alloc.allocPages(256);
+                    const section_phys_addr = kglobal.physToVirt(page_alloc.pageToPhys(section_page));
+                    entry.section_addr = @intCast(section_phys_addr >> 20);
+                    entry.type = .Section;
+                }
+            },
+            .L2TablePtr => {
+                const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
+                const l2_table_phys_addr = l1_entry.addr();
+                const l2_table: *page_table.L2PageTable = @ptrFromInt(kglobal.physToVirt(l2_table_phys_addr));
+                const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
 
-    //             if(l2_entry.type != .Fault) {
-    //                 return;
-    //             }
+                if (l2_entry.type != .Fault) {
+                    return;
+                }
 
-    //             l2_entry.phys_addr = @intCast(phys >> 12);
-    //             l2_entry.type = .SmallPage;
-    //         },
-    //         else => {
-    //         }
-    //     }
-    // }
+                l2_entry.phys_addr = @intCast(phys >> 12);
+                l2_entry.type = .SmallPage;
+            },
+            else => {},
+        }
+    }
 };
 
+fn testBasicInit(allocator: *std.mem.Allocator) !struct{last_order_chunks_count: usize, memory: []u8} {
+    const size = (1024 * 1024 * 1024 * 1);
+    const memory = try allocator.alloc(u8, size);
+
+    const start = @intFromPtr(@as([*]u8, @ptrCast(memory)));
+    const total_pages = @divTrunc(size, page_alloc.PAGE_SIZE);
+
+    _ = page_alloc.initGlobal(start, size, 0);
+    return .{ .last_order_chunks_count = total_pages / page_alloc.LAST_ORDER_BLOCK_SIZE, .memory = memory };
+}
+
+test "alloc and dealloc all sections" {
+    var allocator = std.testing.allocator;
+    const g = try testBasicInit(&allocator);
+    defer allocator.free(g.memory);
+
+    var mem = try VirtMemHandler.init();
+
+    for(0..1020) |i| {
+        const cur: usize = i * page_alloc.SECTION_SIZE;
+        try mem.map(cur, cur, .{ .type = .Section });
+    }
+
+    mem.l1.drop();
+
+    for (0..(page_alloc.MAX_ORDER - 1)) |i| try std.testing.expect(page_alloc.global_page_alloc.free_list[i] == null);
+    try std.testing.expect(page_alloc.global_page_alloc.getFreeListLen(270000, page_alloc.MAX_ORDER - 1) == g.last_order_chunks_count);
+}

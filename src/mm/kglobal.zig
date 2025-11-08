@@ -54,3 +54,6 @@ pub const KernelBounds = struct {
     }
 };
 
+pub inline fn physToVirt(phys: usize) usize {
+    return phys + VIRT_OFFSET;
+}
