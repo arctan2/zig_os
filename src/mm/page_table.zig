@@ -41,7 +41,7 @@ pub const L2TableAddr = packed struct(usize) {
     l2_addr: u22,
 
     pub inline fn addr(self: *const L2TableAddr) usize {
-        return self.l2_addr << 10;
+        return @as(usize, self.l2_addr) << 10;
     }
 
     pub inline fn toTable(self: *const L2TableAddr) *L2PageTable {
@@ -127,7 +127,7 @@ pub const SmallPage = packed struct {
     phys_addr: u20,
 
     pub inline fn addr(self: *const SmallPage) usize {
-        return self.phys_addr << 12;
+        return @as(usize, self.phys_addr) << 12;
     }
 };
 

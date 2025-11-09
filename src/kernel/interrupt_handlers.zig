@@ -10,7 +10,7 @@ pub export fn reset_handler() void {
 
 pub export fn irq_handler() void {
     const ack = gicv2.C.ack();
-    defer gicv2.C.endOfIntr(ack.intr_id);
+    // defer gicv2.C.endOfIntr(ack.intr_id);
 
     uart.print("interrupt irq id = {}\n", .{ack.intr_id});
 }
