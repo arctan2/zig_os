@@ -58,7 +58,7 @@ pub const VirtMemHandler = struct {
                 } else {
                     const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
                     const section_page = try page_alloc.allocPages(256);
-                    const section_phys_addr = kglobal.physToVirt(page_alloc.pageToPhys(section_page));
+                    const section_phys_addr = page_alloc.pageToPhys(section_page);
                     entry.section_addr = @intCast(section_phys_addr >> 20);
                     entry.type = .Section;
                 }
@@ -91,7 +91,7 @@ pub const VirtMemHandler = struct {
                 // corresponding address 0 if L2 table is deleted.
                 const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
                 const l2_table_phys_addr = l1_entry.addr();
-                const l2_table: *page_table.L2PageTable = @ptrFromInt(kglobal.physToVirt(l2_table_phys_addr));
+                const l2_table = page_table.physToL2Virt(l2_table_phys_addr);
                 l2_table.entries[virt_addr.l2_idx] = 0;
             },
             else => {},

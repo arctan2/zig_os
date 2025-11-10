@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const uart = @import("uart");
 const page_alloc = @import("page_alloc.zig");
 
@@ -54,6 +55,21 @@ pub const KernelBounds = struct {
     }
 };
 
+
+comptime {
+    const FAKE_OFF: usize = 0;
+    if (builtin.is_test) {
+        @export(&FAKE_OFF, .{
+            .name = "KERNEL_OFFSET",
+            .linkage = .strong,
+        });
+    }
+}
+
 pub inline fn physToVirt(phys: usize) usize {
-    return phys + VIRT_OFFSET;
+    return phys + @intFromPtr(&KERNEL_OFFSET);
+}
+
+pub inline fn virtToPhys(virt: usize) usize {
+    return virt - @intFromPtr(&KERNEL_OFFSET);
 }

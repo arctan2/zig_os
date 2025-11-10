@@ -1,6 +1,7 @@
 const std = @import("std");
 const uart = @import("uart");
 const page_alloc = @import("page_alloc.zig");
+const kglobal = @import("kglobal.zig");
 
 const L1EntryType = enum(u2) {
     Fault = 0b00,
@@ -205,4 +206,12 @@ pub const L2PageTable = struct {
         uart.print("--------L2 TABLE END----------\n", void);
     }
 };
+
+pub inline fn physToL1Virt(addr: usize) *L1PageTable {
+    return @ptrFromInt(kglobal.physToVirt(addr));
+}
+
+pub inline fn physToL2Virt(addr: usize) *L2PageTable {
+    return @ptrFromInt(kglobal.physToVirt(addr));
+}
 
