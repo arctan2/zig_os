@@ -2,8 +2,9 @@ const std = @import("std");
 const uart = @import("uart");
 const utils = @import("utils");
 const kglobal = @import("kglobal.zig");
-pub const page_alloc = @import("page_alloc.zig");
-pub const page_table = @import("./page_table.zig");
+const page_alloc = @import("page_alloc.zig");
+const page_table = @import("./page_table.zig");
+const testing_utils = @import("testing_utils.zig");
 
 pub const VirtAddress = packed struct(u32) {
     offset: u12,
@@ -39,6 +40,7 @@ pub const VirtMemHandler = struct {
     // for these to work properly the page allocator base address must be aligned to 1MB.
     // It only maps the virt to phys. So phys should be a valid page start address and it is
     // the responsibility of the caller.
+    // IT DOES NOT DO ALLOCATIONS FOR THE ACTUAL PAGES. IT IS DONE BY THE CALLER
     // It only does allocations for the page table itself.
     pub fn map(self: *VirtMemHandler, virt: usize, phys: usize, flags: MapFlags) !void {
         const virt_addr: VirtAddress = @bitCast(virt);
@@ -57,9 +59,7 @@ pub const VirtMemHandler = struct {
                     l2_entry.type = .SmallPage;
                 } else {
                     const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
-                    const section_page = try page_alloc.allocPages(256);
-                    const section_phys_addr = page_alloc.pageToPhys(section_page);
-                    entry.section_addr = @intCast(section_phys_addr >> 20);
+                    entry.section_addr = @intCast(phys >> 20);
                     entry.type = .Section;
                 }
             },
@@ -99,31 +99,20 @@ pub const VirtMemHandler = struct {
     }
 };
 
-fn testBasicInit(allocator: *std.mem.Allocator) !struct{last_order_chunks_count: usize, memory: []u8} {
-    const size = (1024 * 1024 * 1024 * 1);
-    const memory = try allocator.alloc(u8, size);
-
-    const start = @intFromPtr(@as([*]u8, @ptrCast(memory)));
-    const total_pages = @divTrunc(size, page_alloc.PAGE_SIZE);
-
-    _ = page_alloc.initGlobal(start, size, 0);
-    return .{ .last_order_chunks_count = total_pages / page_alloc.LAST_ORDER_BLOCK_SIZE, .memory = memory };
-}
-
 test "alloc and dealloc ~1GB l1 entries" {
     // if(!utils.isAllTestMode()) return error.SkipZigTest;
     var allocator = std.testing.allocator;
-    const g = try testBasicInit(&allocator);
+    const g = try testing_utils.testBasicInit(&allocator);
     defer allocator.free(g.memory);
 
     var mem = try VirtMemHandler.init();
 
     for(0..1020) |i| {
         const cur: usize = i * page_alloc.SECTION_SIZE;
-        try mem.map(cur, cur, .{ .type = .Section });
+        const block = try page_alloc.allocPages(256);
+        try mem.map(cur, page_alloc.pageToPhys(block), .{ .type = .Section });
     }
 
-    mem.l1.drop();
     mem.l1.drop();
 
     for (0..(page_alloc.MAX_ORDER - 1)) |i| try std.testing.expect(page_alloc.global_page_alloc.free_list[i] == null);
@@ -132,7 +121,7 @@ test "alloc and dealloc ~1GB l1 entries" {
 
 test "map and unmap few individual pages" {
     var allocator = std.testing.allocator;
-    const g = try testBasicInit(&allocator);
+    const g = try testing_utils.testBasicInit(&allocator);
     defer allocator.free(g.memory);
 
     var mem = try VirtMemHandler.init();

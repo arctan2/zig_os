@@ -80,12 +80,8 @@ pub const L1PageTable = struct {
         for(0..self.entries.len) |i| {
             const idx: usize = @intCast(i);
             switch(self.getEntryType(idx)) {
-                .Section => {
-                    self.getEntryAs(SectionEntry, idx).free();
-                },
-                .L2TablePtr => {
-                    self.getEntryAs(L2TableAddr, idx).free();
-                },
+                .Section => self.getEntryAs(SectionEntry, idx).free(),
+                .L2TablePtr => self.getEntryAs(L2TableAddr, idx).free(),
                 else => {}
             }
             self.entries[i] = 0;

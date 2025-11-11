@@ -14,7 +14,7 @@ pub fn runTests(b: *std.Build) void {
         .target = target,
     });
     
-    const virt_mem_handler = b.createModule(.{
+    const vm_handler = b.createModule(.{
         .root_source_file = b.path("./src/mm/mm.zig"),
         .target = target,
         .imports = &.{
@@ -23,7 +23,7 @@ pub fn runTests(b: *std.Build) void {
     });
 
     const tests: [1]*std.Build.Step.Compile = .{
-        b.addTest(.{ .root_module = virt_mem_handler, .filters = tests_filter }),
+        b.addTest(.{ .root_module = vm_handler, .filters = tests_filter }),
     };
 
     for(tests) |t| {

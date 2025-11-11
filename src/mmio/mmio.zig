@@ -7,14 +7,14 @@ pub const gicv2 = @import("gicv2.zig");
 const UART_BASE = kglobal.MMIO_BASE;
 const GIC_BASE = kglobal.MMIO_BASE + mm.page_alloc.SECTION_SIZE;
 
-pub fn init(kvmem: *mm.virt_mem_handler.VirtMemHandler, fdt_base: [*]const u8) void {
+pub fn init(kvmem: *mm.vm_handler.VirtMemHandler, fdt_base: [*]const u8) void {
     try kvmem.kernelMapSection(UART_BASE, uart.getUartBase());
     uart.setBase(UART_BASE);
 
     initGicv2(kvmem, fdt_base);
 }
 
-fn initGicv2(kvmem: *mm.virt_mem_handler.VirtMemHandler, fdt_base: [*]const u8) void {
+fn initGicv2(kvmem: *mm.vm_handler.VirtMemHandler, fdt_base: [*]const u8) void {
     const fdt_accessor = fdt.Accessor.init(fdt_base);
 
     const intr_ctl = fdt_accessor.findNodeWithProp(fdt_accessor.structs.base, "interrupt-controller") orelse {

@@ -67,9 +67,15 @@ comptime {
 }
 
 pub inline fn physToVirt(phys: usize) usize {
+    if (builtin.is_test) {
+        return phys;
+    }
     return phys + @intFromPtr(&KERNEL_OFFSET);
 }
 
 pub inline fn virtToPhys(virt: usize) usize {
+    if (builtin.is_test) {
+        return virt;
+    }
     return virt - @intFromPtr(&KERNEL_OFFSET);
 }

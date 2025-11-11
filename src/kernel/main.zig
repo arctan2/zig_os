@@ -17,7 +17,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
 
-    var kvmem = mm.virt_mem_handler.VirtMemHandler{
+    var kvmem = mm.vm_handler.VirtMemHandler{
         .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1))
     };
     uart.setBase(0x09000000);
