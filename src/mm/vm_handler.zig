@@ -25,18 +25,6 @@ pub const VirtMemHandler = struct {
         };
     }
 
-    pub fn kernelMapSection(self: *VirtMemHandler, virt: usize, phys: usize) !void {
-        const virt_addr: VirtAddress = @bitCast(virt);
-        const entry: *page_table.SectionEntry = @ptrCast(&self.l1.entries[virt_addr.l1_idx]);
-        entry.section_addr = @intCast(phys >> 20);
-        entry.type = .Section;
-    }
-
-    pub fn kernelUnmapSection(self: *VirtMemHandler, virt: usize) void {
-        const virt_addr: VirtAddress = @bitCast(virt);
-        self.l1.entries[virt_addr.l1_idx] = 0;
-    }
-
     // for these to work properly the page allocator base address must be aligned to 1MB.
     // It only maps the virt to phys. So phys should be a valid page start address and it is
     // the responsibility of the caller.

@@ -4,17 +4,26 @@ const fdt = @import("fdt");
 const kglobal = mm.kglobal;
 pub const gicv2 = @import("gicv2.zig");
 
-const UART_BASE = kglobal.MMIO_BASE;
-const GIC_BASE = kglobal.MMIO_BASE + mm.page_alloc.SECTION_SIZE;
+var mmio_mapper = struct {
+    cur: usize,
+
+    fn nextAddr(self: *@This()) usize {
+        const cur = self.cur;
+        self.cur += mm.page_alloc.SECTION_SIZE;
+        return cur;
+    }
+} { .cur = kglobal.MMIO_BASE };
 
 pub fn init(kvmem: *mm.vm_handler.VirtMemHandler, fdt_base: [*]const u8) void {
-    try kvmem.kernelMapSection(UART_BASE, uart.getUartBase());
+    const UART_BASE = mmio_mapper.nextAddr();
+    kvmem.map(UART_BASE, uart.getUartBase(), .{ .type = .Section }) catch unreachable;
     uart.setBase(UART_BASE);
 
     initGicv2(kvmem, fdt_base);
 }
 
 fn initGicv2(kvmem: *mm.vm_handler.VirtMemHandler, fdt_base: [*]const u8) void {
+    const GIC_BASE = mmio_mapper.nextAddr();
     const fdt_accessor = fdt.Accessor.init(fdt_base);
 
     const intr_ctl = fdt_accessor.findNodeWithProp(fdt_accessor.structs.base, "interrupt-controller") orelse {
@@ -31,7 +40,7 @@ fn initGicv2(kvmem: *mm.vm_handler.VirtMemHandler, fdt_base: [*]const u8) void {
     const distr_size = fdt.readRegFromCells(addr_size_cells, reg.data, 1);
     const cpu_iface_start = fdt.readRegFromCells(addr_size_cells, reg.data, 2);
 
-    try kvmem.kernelMapSection(GIC_BASE, @min(distr_start, cpu_iface_start));
+    kvmem.map(GIC_BASE, @min(distr_start, cpu_iface_start), .{ .type = .Section }) catch unreachable;
 
     gicv2.D.setBase(GIC_BASE);
     gicv2.C.setBase(GIC_BASE + distr_size);
