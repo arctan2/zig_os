@@ -47,11 +47,24 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     kvmem.map(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }) catch unreachable;
     mm.unmapIdentityKernel(&kbounds, &kvmem);
 
+    initStacks();
+
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     interrupts.setup(&fdt_accessor);
     interrupts.enable();
 
     while (true) {}
+}
+
+fn initStacks() void {
+    const vstack_top = @intFromPtr(&kglobal._vstack_top);
+    asm volatile(
+        \\ cps #0x1F
+        \\ mov sp, %[stack]
+        :
+        : [stack] "r" (vstack_top)
+        : .{.memory = true}
+    );
 }
 
 pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {

@@ -173,6 +173,18 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
             printInternal(fmt, begin, end, 0, .{@intFromEnum(arg)});
             puts(")");
         },
+        .@"struct" => |s| {
+            puts(@typeName(arg_type) ++ "{");
+            comptime var count = 0;
+            inline for(s.fields) |f| {
+                puts(f.name);
+                puts(": ");
+                printInternal(fmt, begin, end, 0, .{@field(arg, f.name)});
+                if(count < s.fields.len - 1) puts(", ");
+                count += 1;
+            }
+            puts("}");
+        },
         .void => {
         },
         .optional => {
@@ -184,6 +196,16 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
         },
         .pointer => {
             printInternal(fmt, begin, end, 0, .{@intFromPtr(arg)});
+        },
+        .array => {
+            putc('[');
+            comptime var count = 0;
+            inline for(arg) |a| {
+                printInternal(fmt, begin, end, 0, .{a});
+                if(count < arg.len - 1) puts(", ");
+                count += 1;
+            }
+            putc(']');
         },
         else => {
             @compileError("print not implemented for that type");

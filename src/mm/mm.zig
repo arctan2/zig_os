@@ -1,12 +1,13 @@
 const std = @import("std");
 const uart = @import("uart");
+const atomic = @import("atomic");
 pub const page_table = @import("page_table.zig");
 pub const vm_handler = @import("vm_handler.zig");
 pub const kglobal = @import("kglobal.zig");
 pub const page_alloc = @import("page_alloc.zig");
 
 pub const kbacking_alloc = @import("kbacking_alloc.zig");
-var gpa_allocator = std.heap.DebugAllocator(.{ .thread_safe = false, .safety = false }) {
+var gpa_allocator = std.heap.DebugAllocator(.{ .safety = false, .MutexType = atomic.spinlock.SpinLock }) {
     .backing_allocator = kbacking_alloc.allocator
 };
 pub const kalloc = gpa_allocator.allocator();

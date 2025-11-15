@@ -68,6 +68,14 @@ pub fn build(b: *std.Build) void {
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
     });
 
+    const atomic = b.createModule(.{
+        .root_source_file = b.path("src/atomic/atomic.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+        }
+    });
+
     const fdt = b.createModule(.{
         .root_source_file = b.path("src/fdt/fdt.zig"),
         .target = target,
@@ -97,6 +105,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "uart", .module = uart},
             .{.name = "arm", .module = arm},
             .{.name = "fdt", .module = fdt},
+            .{.name = "atomic", .module = atomic},
         }
     });
 

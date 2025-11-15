@@ -14,10 +14,14 @@ pub export fn vector_table() linksection(".vectors") callconv(.naked) void {
 pub export fn _irq_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
+        \\ srsdb sp!, #0x1f
+        \\ cps #0x1f
         \\ push {r0-r12, lr}
+        \\ mov r0, #0
+        \\ add r0, r0, sp
         \\ bl irq_handler
         \\ pop {r0-r12, lr}
-        \\ subs pc, lr, #0
+        \\ rfeia sp!
     );
 }
 
@@ -25,7 +29,7 @@ pub export fn _reset_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
-        \\ bl irq_handler
+        \\ bl reset_handler
         \\ pop {r0-r12, lr}
         \\ subs pc, lr, #0
     );
@@ -35,7 +39,7 @@ pub export fn _undef_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
-        \\ bl irq_handler
+        \\ bl undef_handler
         \\ pop {r0-r12, lr}
         \\ subs pc, lr, #0
     );
@@ -45,7 +49,7 @@ pub export fn _svc_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
-        \\ bl irq_handler
+        \\ bl svc_handler
         \\ pop {r0-r12, lr}
         \\ subs pc, lr, #0
     );
@@ -55,7 +59,7 @@ pub export fn _pabort_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
-        \\ bl irq_handler
+        \\ bl pabort_handler
         \\ pop {r0-r12, lr}
         \\ subs pc, lr, #0
     );
@@ -65,7 +69,7 @@ pub export fn _dabort_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
-        \\ bl irq_handler
+        \\ bl dabort_handler
         \\ pop {r0-r12, lr}
         \\ subs pc, lr, #0
     );
@@ -75,7 +79,7 @@ pub export fn _fiq_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
         \\ push {r0-r12, lr}
-        \\ bl irq_handler
+        \\ bl fiq_handler
         \\ pop {r0-r12, lr}
         \\ subs pc, lr, #0
     );

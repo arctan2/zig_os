@@ -29,19 +29,22 @@ const BackingAllocator = struct {
     fn free(_: *anyopaque, memory: []u8, _: Alignment, _: usize) void {
         page_alloc.freeAddr(kglobal.virtToPhys(@intFromPtr(memory.ptr)));
     }
-};
 
-const backing_allocator = BackingAllocator{};
-
-pub const allocator = Allocator{
-    .ptr = @constCast(@ptrCast(&backing_allocator)),
-    .vtable = &.{
-        .alloc = &BackingAllocator.alloc,
-        .resize = &BackingAllocator.resize,
-        .remap = &BackingAllocator.remap,
-        .free = &BackingAllocator.free
+    fn allocator(self: *BackingAllocator) Allocator {
+        return .{
+            .ptr = @ptrCast(self),
+            .vtable = &.{
+                .alloc = alloc,
+                .resize = resize,
+                .remap = remap,
+                .free = free
+            }
+        };
     }
 };
+
+var backing_allocator = BackingAllocator{};
+pub const allocator = backing_allocator.allocator();
 
 test "alloc and dealloc ints" {
     var testing_allocator = std.testing.allocator;
