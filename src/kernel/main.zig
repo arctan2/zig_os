@@ -12,7 +12,7 @@ const interrupts = @import("interrupts.zig");
 const schedule = @import("schedule.zig");
 const dispatch = @import("dispatch.zig");
 pub const ih = @import("interrupt_handlers.zig");
-pub const vt = @import("vector_table.zig");
+// pub const vt = @import("vector_table.zig");
 
 pub const std_options: std.Options = .{
     .page_size_max = mm.page_alloc.PAGE_SIZE,
@@ -27,7 +27,6 @@ pub const os = struct {
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") noreturn {
     _ = ih.irq_handler;
-    _ = vt.vector_table;
 
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
 
@@ -58,7 +57,10 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     interrupts.enable();
     devices.timers.enable(&fdt_accessor);
 
-    while (true) {}
+    while (true) {
+        uart.print("waiting for interrupts\n", .{});
+        asm volatile("wfi");
+    }
 }
 
 fn initStacks() void {

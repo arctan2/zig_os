@@ -149,6 +149,7 @@ pub fn build(b: *std.Build) void {
 
     exe.setLinkerScript(b.path("./src/linker.ld"));
     exe.bundle_compiler_rt = true;
+    exe.addAssemblyFile(b.path("./src/asm/vector_table.S"));
     exe.addAssemblyFile(b.path("./src/asm/start.S"));
     exe.addAssemblyFile(b.path("./src/asm/early_kernel.S"));
 

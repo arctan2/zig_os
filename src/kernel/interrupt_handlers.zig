@@ -15,7 +15,10 @@ pub export fn reset_handler() void {
 pub export fn irq_handler(irq_sp: usize) usize {
     const irq_cpu_state: *dispatch.IrqCpuState = @ptrFromInt(irq_sp);
     const ack = gicv2.C.ack();
-    // defer gicv2.C.endOfIntr(ack.intr_id);
+    defer {
+        arm.generic_timer.setTval(10000);
+        gicv2.C.endOfIntr(ack.intr_id);
+    }
 
     switch(ack.intr_id) {
         30 => {
