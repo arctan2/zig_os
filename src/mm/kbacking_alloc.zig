@@ -50,7 +50,7 @@ test "alloc and dealloc ints" {
     var testing_allocator = std.testing.allocator;
     const g = try testing_utils.testBasicInit(&testing_allocator);
     defer testing_allocator.free(g.memory);
-    var mem = try vm_handler.VirtMemHandler.init();
+    var mem = try vm_handler.VMHandler.init();
 
     const start: usize = g.start;
 
@@ -82,7 +82,7 @@ test "alloc and dealloc structs" {
     var testing_allocator = std.testing.allocator;
     const g = try testing_utils.testBasicInit(&testing_allocator);
     defer testing_allocator.free(g.memory);
-    var mem = try vm_handler.VirtMemHandler.init();
+    var mem = try vm_handler.VMHandler.init();
 
     const start: usize = g.start;
 

@@ -9,6 +9,8 @@ const mmio = @import("mmio");
 const devices = @import("devices");
 const gicv2 = mmio.gicv2;
 const interrupts = @import("interrupts.zig");
+const schedule = @import("schedule.zig");
+const dispatch = @import("dispatch.zig");
 pub const ih = @import("interrupt_handlers.zig");
 pub const vt = @import("vector_table.zig");
 
@@ -25,11 +27,11 @@ pub const os = struct {
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") noreturn {
     _ = ih.irq_handler;
-    _ = vt._irq_handler;
+    _ = vt.vector_table;
 
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
 
-    var kvmem = mm.vm_handler.VirtMemHandler{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
+    var kvmem = mm.vm_handler.VMHandler{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
     uart.setBase(0x09000000);
     mmio.init(&kvmem, fdt_base);
 
@@ -49,26 +51,33 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     initStacks();
 
+    dispatch.kernel_task.vm_handler = kvmem;
+
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     interrupts.setup(&fdt_accessor);
     interrupts.enable();
+    devices.timers.enable(&fdt_accessor);
 
     while (true) {}
 }
 
 fn initStacks() void {
-    const vstack_top = @intFromPtr(&kglobal._vstack_top);
+    const sys_stack = @intFromPtr(&kglobal._sys_stack_top);
+    const irq_stack = @intFromPtr(&kglobal._irq_stack_top);
     asm volatile(
-        \\ cps #0x1F
-        \\ mov sp, %[stack]
+        \\ cps #0x12
+        \\ mov sp, %[irq_stack]
+        \\ cps #0x1f
+        \\ mov sp, %[sys_stack]
+        \\ cps #0x13
         :
-        : [stack] "r" (vstack_top)
-        : .{.memory = true}
+        : [sys_stack] "r" (sys_stack), [irq_stack] "r" (irq_stack)
     );
 }
 
 pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
     uart.puts("panic: ");
     uart.puts(msg);
+    uart.puts("\n");
     while (true) {}
 }

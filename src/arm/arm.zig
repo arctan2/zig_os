@@ -4,6 +4,7 @@ pub const ttbr = @import("ttbr.zig");
 pub const generic_timer = @import("generic_timer.zig");
 pub const vbar = @import("vbar.zig");
 pub const isr = @import("isr.zig");
+pub const cpsr = @import("cpsr.zig");
 
 pub inline fn dsb() void {
     asm volatile ("dsb");

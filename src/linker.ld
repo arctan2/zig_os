@@ -57,7 +57,17 @@ SECTIONS
 	.rodata : AT(ADDR(.rodata) - KERNEL_OFFSET) { *(.rodata) }
 
 	. = ALIGN(8);
-	. += 0x8000;
+	. += 0x1000;
+	. = ALIGN(8);
+	_irq_stack_top = .;
+
+	. = ALIGN(8);
+	. += 0x4000;
+	. = ALIGN(8);
+	_sys_stack_top = .;
+
+	. = ALIGN(8);
+	. += 0x4000;
 	. = ALIGN(8);
 	_vstack_top = .;
 

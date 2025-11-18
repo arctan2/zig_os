@@ -14,14 +14,32 @@ pub export fn vector_table() linksection(".vectors") callconv(.naked) void {
 pub export fn _irq_handler() callconv(.naked) void {
     asm volatile (
         \\ sub lr, lr, #4
-        \\ srsdb sp!, #0x1f
-        \\ cps #0x1f
-        \\ push {r0-r12, lr}
-        \\ mov r0, #0
-        \\ add r0, r0, sp
-        \\ bl irq_handler
-        \\ pop {r0-r12, lr}
-        \\ rfeia sp!
+
+        // save the lr(which is the pc actually of interrupted task) along with r0-r12 and spsr
+        \\ push {r0-r12, lr} // irq_stack += 56 bytes
+        \\ mrs r0, spsr
+        \\ push {r0} // irq_stack += 4 bytes
+
+        // now go into the mode from spsr and grab the lr and sp of the task mode
+        \\ and r0, r0, #0x1f // r0 already has spsr so just get last 5 bits to get the mode
+        \\ mrs r1, cpsr
+        \\ bic r1, r1, #0x1f
+        \\ orr r0, r0, r1
+        \\ msr cpsr, r0 // switch to whatever previously mode was
+        \\ mov r0, lr
+        \\ mov r1, sp
+        \\ cps #0x12 // irq mode
+        \\ push {r0, r1} // irq_stack += 8 bytes
+        \\ mov r0, sp
+        \\ bl irq_handler @ returns r0 = sp of next task
+        \\ add sp, sp, #68 // reset the irq_stack
+        \\ ldr r1, [r0, #8]
+        \\ msr cpsr, r1
+        \\ ldr lr, [r0]
+        \\ mov sp, r0
+        \\ add sp, sp, #12
+        \\ ldmia sp!, {r0-r12, pc}
+        ::: .{.memory = true}
     );
 }
 
@@ -84,4 +102,3 @@ pub export fn _fiq_handler() callconv(.naked) void {
         \\ subs pc, lr, #0
     );
 }
-

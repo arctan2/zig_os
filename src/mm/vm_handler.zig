@@ -16,10 +16,10 @@ pub const MapFlags = struct {
     type: enum { Section, L2 },
 };
 
-pub const VirtMemHandler = struct {
+pub const VMHandler = struct {
     l1: *page_table.L1PageTable,
 
-    pub fn init() !VirtMemHandler {
+    pub fn init() !VMHandler {
         return .{
             .l1 = try .init(),
         };
@@ -30,7 +30,7 @@ pub const VirtMemHandler = struct {
     // the responsibility of the caller.
     // IT DOES NOT DO ALLOCATIONS FOR THE ACTUAL PAGES. IT IS DONE BY THE CALLER
     // It only does allocations for the page table itself.
-    pub fn map(self: *VirtMemHandler, virt: usize, phys: usize, flags: MapFlags) !void {
+    pub fn map(self: *VMHandler, virt: usize, phys: usize, flags: MapFlags) !void {
         const virt_addr: VirtAddress = @bitCast(virt);
         const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
 
@@ -66,7 +66,7 @@ pub const VirtMemHandler = struct {
         }
     }
 
-    pub fn unmap(self: *VirtMemHandler, virt: usize) void {
+    pub fn unmap(self: *VMHandler, virt: usize) void {
         const virt_addr: VirtAddress = @bitCast(virt);
         const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
 
@@ -93,7 +93,7 @@ test "alloc and dealloc ~1GB l1 entries" {
     const g = try testing_utils.testBasicInit(&allocator);
     defer allocator.free(g.memory);
 
-    var mem = try VirtMemHandler.init();
+    var mem = try VMHandler.init();
 
     for(0..1020) |i| {
         const cur: usize = i * page_alloc.SECTION_SIZE;
@@ -112,7 +112,7 @@ test "map and unmap few individual pages" {
     const g = try testing_utils.testBasicInit(&allocator);
     defer allocator.free(g.memory);
 
-    var mem = try VirtMemHandler.init();
+    var mem = try VMHandler.init();
 
     var my_list: std.ArrayList(*page_alloc.Page) = .empty;
     defer my_list.deinit(allocator);

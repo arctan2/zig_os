@@ -106,7 +106,7 @@ pub fn putBin(comptime T: type, num: T) void {
     var reversed = [_]u8{0} ** 64;
     var n = num;
 
-    puts("0x");
+    puts("0b");
 
     if (n == 0) {
         putc('0');
@@ -149,16 +149,16 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
         .int => {
             switch(fmt[begin]) {
                 'x' => {
-                    putHex(arg_type, arg);
+                    putHex(usize, arg);
                 },
                 'c' => {
                     putc(arg);
                 },
                 'b' => {
-                    putBin(arg_type, arg);
+                    putBin(usize, arg);
                 },
                 '}' => {
-                    putInt(arg_type, arg);
+                    putInt(usize, arg);
                 },
                 else => {
                     @compileError("invalid mode or " ++ NO_MATCHING_CURLY);
