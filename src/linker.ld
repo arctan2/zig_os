@@ -69,6 +69,11 @@ SECTIONS
 	. = ALIGN(8);
 	. += 0x4000;
 	. = ALIGN(8);
+	_pabort_stack_top = .;
+
+	. = ALIGN(8);
+	. += 0x4000;
+	. = ALIGN(8);
 	_vstack_top = .;
 
 	. = . + 8;

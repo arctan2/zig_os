@@ -17,6 +17,7 @@ pub extern const _vkernel_end: u8;
 pub extern const _vstack_top: u8;
 pub extern const _irq_stack_top: u8;
 pub extern const _sys_stack_top: u8;
+pub extern const _pabort_stack_top: u8;
 pub extern const _kernel_l1_page_table_phys: u8;
 
 pub const KernelBounds = struct {

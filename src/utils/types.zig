@@ -2,7 +2,6 @@ pub fn ListNode(comptime ContainerT: type, field_name: []const u8) type {
     return struct {
         const Self = @This();
         next: ?*Self,
-        prev: ?*Self,
 
         pub fn container(self: *Self) *ContainerT {
             return @fieldParentPtr(field_name, self);
@@ -16,6 +15,13 @@ pub fn Queue(comptime ListNodeType: type) type {
 
         head: ?*ListNodeType,
         tail: ?*ListNodeType,
+
+        pub fn default() Q {
+            return .{
+                .head = null,
+                .tail = null
+            };
+        }
 
         pub inline fn isEmpty(self: *Q) bool {
             return self.head == null;
@@ -66,14 +72,24 @@ pub fn Queue(comptime ListNodeType: type) type {
     };
 }
 
-pub const BitMask = packed struct(usize) {
+pub const Bitmask = packed struct(usize) {
     bits: usize,
 
-    pub fn set(self: *BitMask, number: usize) void {
-        self.bits |= (1 << number);
+    pub fn default() Bitmask {
+        return .{
+            .bits = 0
+        };
     }
 
-    pub fn clear(self: *BitMask, number: usize) void {
-        self.bits &= ~(1 << number);
+    pub inline fn countZeros(self: *Bitmask) usize {
+        return @ctz(self.bits);
+    }
+
+    pub inline fn set(self: *Bitmask, number: usize) void {
+        self.bits |= (@as(usize, 1) << @intCast(number));
+    }
+
+    pub inline fn clear(self: *Bitmask, number: usize) void {
+        self.bits &= ~(@as(usize, 1) << @intCast(number));
     }
 };

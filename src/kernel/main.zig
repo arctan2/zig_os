@@ -9,8 +9,7 @@ const mmio = @import("mmio");
 const devices = @import("devices");
 const gicv2 = mmio.gicv2;
 const interrupts = @import("interrupts.zig");
-const schedule = @import("schedule.zig");
-const dispatch = @import("dispatch.zig");
+const scheduler = @import("scheduler.zig");
 pub const ih = @import("interrupt_handlers.zig");
 // pub const vt = @import("vector_table.zig");
 
@@ -25,7 +24,8 @@ pub const os = struct {
     };
 };
 
-pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") noreturn {
+
+pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
     _ = ih.irq_handler;
 
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
@@ -50,15 +50,51 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     initStacks();
 
-    dispatch.kernel_task.vm_handler = kvmem;
+    scheduler.init(kvmem);
+
+    var cool_task = scheduler.Task.default();
+    var another_task = scheduler.Task.default();
+
+    cool_task = scheduler.idle_task;
+    cool_task.cpu_state.pc = @intFromPtr(&coolTask);
+    cool_task.priority = 30;
+    cool_task.cpu_state.sp = @intFromPtr(&kglobal._sys_stack_top);
+
+    another_task = scheduler.idle_task;
+    another_task.cpu_state.pc = @intFromPtr(&lame_task);
+    another_task.priority = 30;
+    another_task.cpu_state.sp = @intFromPtr(&kglobal._pabort_stack_top);
+
+    scheduler.add(&another_task);
+    scheduler.add(&cool_task);
 
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     interrupts.setup(&fdt_accessor);
-    interrupts.enable();
     devices.timers.enable(&fdt_accessor);
+    interrupts.enable();
+    scheduler.idle();
+}
 
+fn coolTask() void {
+    var sum: usize = 0;
+    for(0..10_000) |i| {
+        sum += i;
+    }
+    uart.print("cool_task = {}\n", .{sum});
     while (true) {
-        uart.print("waiting for interrupts\n", .{});
+        // uart.print("TASK 2 waiting\n", .{});
+        asm volatile("wfi");
+    }
+}
+
+fn lame_task() void {
+    var sum: usize = 0;
+    for(0..10_000) |i| {
+        sum += i;
+    }
+    uart.print("lame_task = {}\n", .{sum});
+    while (true) {
+        // uart.print("TASK 2 waiting\n", .{});
         asm volatile("wfi");
     }
 }

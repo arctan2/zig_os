@@ -10,6 +10,6 @@ pub fn enable(fdt_accessor: *const fdt.Accessor) void {
     gicv2.D.setPriority(intr_id, 0);
     gicv2.D.configure(intr_id, .Level);
     gicv2.D.enableIrq(intr_id);
-    GenericTimer.setTval(GenericTimer.cntfrq);
+    GenericTimer.setTval(GenericTimer.freq);
     GenericTimer.enable();
 }

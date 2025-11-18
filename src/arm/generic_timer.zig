@@ -1,7 +1,7 @@
 const uart = @import("uart");
 const fdt = @import("fdt");
 
-pub var cntfrq: u32 = undefined;
+pub var freq: u32 = undefined;
 
 pub const CntpCtl = packed struct(u32) {
     enable: u1,
@@ -40,7 +40,7 @@ pub fn getStatus() u1 {
 }
 
 pub fn enable() void {
-    cntfrq = asm volatile(
+    freq = asm volatile(
         "mrc p15, 0, %[val], c14, c0, 0"
         : [val] "=r" (->u32)
     );

@@ -20,8 +20,7 @@ pub fn setup(_: *const fdt.Accessor) void {
     gicv2.C.init();
 }
 
-pub fn enable() void {
+pub inline fn enable() void {
     asm volatile ("cpsie i");
-    uart.print("interrupts on\n", void);
 }
 

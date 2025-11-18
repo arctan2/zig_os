@@ -4,8 +4,8 @@ const arm = @import("arm");
 const mmio = @import("mmio");
 const gicv2 = mmio.gicv2;
 const utils = @import("utils");
-const schedule = @import("schedule.zig");
-const dispatch = @import("dispatch.zig");
+const scheduler = @import("scheduler.zig");
+const timers = @import("devices").timers;
 
 pub export fn reset_handler() void {
     uart.print("reset_hanlder\n", void);
@@ -13,33 +13,21 @@ pub export fn reset_handler() void {
 }
 
 pub export fn irq_handler(irq_sp: usize) usize {
-    const irq_cpu_state: *dispatch.IrqCpuState = @ptrFromInt(irq_sp);
+    const irq_cpu_state: *scheduler.CpuState = @ptrFromInt(irq_sp);
     const ack = gicv2.C.ack();
     defer {
-        arm.generic_timer.setTval(10000);
+        timers.GenericTimer.setTval(10000);
         gicv2.C.endOfIntr(ack.intr_id);
     }
 
     switch(ack.intr_id) {
-        30 => {
-            if(schedule.next()) |task| {
-                // context switch to task
-                if(task != dispatch.currentTask()) {
-                    dispatch.switchTo(task, irq_cpu_state);
-                }
-            } else {
-                uart.print("irq_cpu_state = {x}\n\n", .{irq_cpu_state.*});
-                const sp: *dispatch.IrqCpuState = @ptrFromInt(irq_cpu_state.sp_of_intr_task - @sizeOf(dispatch.IrqCpuState));
-                sp.* = irq_cpu_state.*;
-                return @intFromPtr(sp);
-            }
-        },
-        else => {
-        }
+        30 => scheduler.tick(irq_cpu_state),
+        else => {}
     }
 
-    // return irq_cpu_state.sp_of_intr_task;
-    return 0;
+    const sp: *scheduler.CpuState = @ptrFromInt(irq_cpu_state.sp - @sizeOf(scheduler.CpuState));
+    sp.* = irq_cpu_state.*;
+    return @intFromPtr(sp);
 }
 
 pub export fn undef_handler() void {
