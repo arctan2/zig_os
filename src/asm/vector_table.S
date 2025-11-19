@@ -34,10 +34,17 @@ _irq_handler:
 
 	// now go into the mode from spsr and grab the lr and sp of the task mode
 	and r0, r0, #0x1f // r0 already has spsr so just get last 5 bits to get the mode
-	mrs r1, cpsr
-	bic r1, r1, #0x1f
-	orr r0, r0, r1
+	mrs r1, cpsr // r1 = cpsr
+	bic r1, r1, #0x1f // clear last 5 bits
+	cmp r0, #0x10
+	beq is_user_mode
+is_other_than_user_mode:
+	orr r0, r0, r1 // new cpsr
 	msr cpsr, r0 // switch to whatever previously mode was
+	b end_if_else
+is_user_mode:
+	cps #0x1f // switch to system mode
+end_if_else:
 	mov r0, lr
 	mov r1, sp
 	cps #0x12 // irq mode
@@ -46,14 +53,11 @@ _irq_handler:
 	bl irq_handler // returns r0 = sp of next task
 	add sp, sp, #68 // reset the irq_stack
 	ldr r1, [r0, #8]
-	orr r1, r1, #0x80 // mask I
 	msr cpsr, r1
 	ldr lr, [r0]
 	mov sp, r0
 	add sp, sp, #12
-	ldmia sp!, {r0-r12}
-	cpsie i // unmask I
-	ldmia sp!, {pc}
+	ldmia sp!, {r0-r12, pc}
 
 _reset_handler:
 	sub lr, lr, #4

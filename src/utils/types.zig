@@ -52,6 +52,12 @@ pub fn Queue(comptime ListNodeType: type) type {
             return null;
         }
 
+        pub fn insertFront(self: *Q, node: *ListNodeType) void {
+            node.next = self.head;
+            self.head = node;
+            if(self.tail == null) self.tail = node;
+        }
+
         pub fn remove(self: *Q, node: *ListNodeType) void {
             var cur = self.head;
             var prev: ?*ListNodeType = null;

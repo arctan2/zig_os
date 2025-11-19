@@ -7,11 +7,10 @@ const fdt = @import("fdt");
 const utils = @import("utils");
 const mmio = @import("mmio");
 const devices = @import("devices");
-const gicv2 = mmio.gicv2;
 const interrupts = @import("interrupts.zig");
 const scheduler = @import("scheduler.zig");
+const syscall = @import("syscall");
 pub const ih = @import("interrupt_handlers.zig");
-// pub const vt = @import("vector_table.zig");
 
 pub const std_options: std.Options = .{
     .page_size_max = mm.page_alloc.PAGE_SIZE,
@@ -23,7 +22,6 @@ pub const os = struct {
         pub const page_allocator = mm.kbacking_alloc.allocator;
     };
 };
-
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
     _ = ih.irq_handler;
@@ -52,26 +50,27 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     scheduler.init(kvmem);
 
-    var cool_task = scheduler.Task.default();
-    var another_task = scheduler.Task.default();
+    var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
+    var another_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
 
-    cool_task = scheduler.idle_task;
+    cool_task.cpu_state = scheduler.idle_task.cpu_state;
     cool_task.cpu_state.pc = @intFromPtr(&coolTask);
     cool_task.priority = 30;
-    cool_task.cpu_state.sp = @intFromPtr(&kglobal._sys_stack_top);
+    cool_task.cpu_state.sp = @intFromPtr((mm.kalloc.alloc(u8, 4096) catch @panic("out of memory")).ptr);
 
-    another_task = scheduler.idle_task;
+    another_task.cpu_state = scheduler.idle_task.cpu_state;
     another_task.cpu_state.pc = @intFromPtr(&lame_task);
     another_task.priority = 30;
-    another_task.cpu_state.sp = @intFromPtr(&kglobal._pabort_stack_top);
+    another_task.cpu_state.sp = @intFromPtr((mm.kalloc.alloc(u8, 4096) catch @panic("out of memory")).ptr);
 
-    scheduler.add(&another_task);
-    scheduler.add(&cool_task);
+    scheduler.add(another_task);
+    scheduler.add(cool_task);
 
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     interrupts.setup(&fdt_accessor);
     devices.timers.enable(&fdt_accessor);
     interrupts.enable();
+    asm volatile("cps #0x10");
     scheduler.idle();
 }
 
@@ -82,7 +81,6 @@ fn coolTask() void {
     }
     uart.print("cool_task = {}\n", .{sum});
     while (true) {
-        // uart.print("TASK 2 waiting\n", .{});
         asm volatile("wfi");
     }
 }
@@ -94,7 +92,6 @@ fn lame_task() void {
     }
     uart.print("lame_task = {}\n", .{sum});
     while (true) {
-        // uart.print("TASK 2 waiting\n", .{});
         asm volatile("wfi");
     }
 }

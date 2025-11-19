@@ -127,6 +127,19 @@ pub fn build(b: *std.Build) void {
         }
     });
 
+    const syscall = b.createModule(.{
+        .root_source_file = b.path("src/kernel/syscall/syscall.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+            .{.name = "arm", .module = arm},
+            .{.name = "fdt", .module = fdt},
+            .{.name = "mmio", .module = mmio},
+        }
+    });
+
     const kernel = b.createModule(.{
         .root_source_file = b.path("src/kernel/main.zig"),
         .target = target,
@@ -139,6 +152,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "utils", .module = utils},
             .{.name = "mmio", .module = mmio},
             .{.name = "devices", .module = devices},
+            .{.name = "syscall", .module = syscall},
         }
     });
 

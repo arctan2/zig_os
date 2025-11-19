@@ -1,3 +1,4 @@
+const std = @import("std");
 const mm = @import("mm");
 const arm = @import("arm");
 const utils = @import("utils");
@@ -9,21 +10,11 @@ const uart = @import("uart");
 // do not ever change the positions of the fields in this because the entire
 // irq handler will break
 pub const CpuState = extern struct {
-    lr: usize,
-    sp: usize,
-    cpsr: usize,
-    registers: [13]usize,
-    pc: usize,
-
-    pub fn default() CpuState {
-        return .{
-            .registers = .{0}**13,
-            .lr = 0,
-            .pc = 0,
-            .sp = 0,
-            .cpsr = 0
-        };
-    }
+    lr: usize = 0,
+    sp: usize = 0,
+    cpsr: arm.cpsr.CPSR = @bitCast(@as(u32, 0)),
+    registers: [13]usize = .{0} ** 13,
+    pc: usize = 0,
 };
 
 const TimeSlice = struct {
@@ -50,8 +41,8 @@ pub fn TaskInfo(comptime SchedState: type) type {
 
         pub fn default() T {
             return .{
-                .cpu_state = .default(),
-                .sch_state = .default(),
+                .cpu_state = .{},
+                .sch_state = .{},
                 .id = 0,
                 .state = .Running,
                 .priority = 31,
@@ -60,6 +51,12 @@ pub fn TaskInfo(comptime SchedState: type) type {
                 .children = null,
                 .parent = null,
             };
+        }
+
+        pub fn allocTask(gpa: std.mem.Allocator) !*T {
+            const task = try gpa.create(T);
+            task.* = T.default();
+            return task;
         }
 
         fn saveStateResetTimeSlice(self: *T, irq_cpu_state: *CpuState) void {
@@ -71,13 +68,7 @@ pub fn TaskInfo(comptime SchedState: type) type {
 
 const SchedulerState = struct {
     const ListNodeType = ListNode(SchedulerState, "list_node");
-    list_node: ListNodeType,
-
-    pub fn default() SchedulerState {
-        return .{
-            .list_node = .{.next = null}
-        };
-    }
+    list_node: ListNodeType = .{.next = null},
 
     pub fn toTask(self: *SchedulerState) *Task {
         return @fieldParentPtr("sch_state", self);
@@ -106,12 +97,13 @@ pub fn init(kvmem: mm.vm_handler.VMHandler) void {
         .registers = .{0}**13,
         .pc = @intFromPtr(&idle),
     };
-    add(&idle_task);
+    idle_task.cpu_state.cpsr.Mode = .User;
+    idle_task.cpu_state.cpsr.I = .Unmaksed;
 }
 
 pub fn idle() void {
+    uart.print("idle\n", .{});
     while (true) {
-        uart.print("task 1 waiting\n", .{});
         asm volatile("wfi");
     }
 }
@@ -122,8 +114,7 @@ pub inline fn currentTask() *Task {
 
 pub fn next() *Task {
     const idx = global.bitmask.countZeros();
-    const t = global.runnable[idx].head.?.container().toTask();
-    return t;
+    return global.runnable[idx].head.?.container().toTask();
 }
 
 pub fn add(task: *Task) void {
@@ -133,12 +124,14 @@ pub fn add(task: *Task) void {
 
 fn schedule() void {
     const idx = global.bitmask.countZeros();
-    const t = global.runnable[idx].dequeue() orelse return;
-    global.runnable[idx].enqueue(t);
+    global.runnable[global.current_task.priority].insertFront(&global.current_task.sch_state.list_node);
+    if(global.runnable[idx].dequeue()) |node| {
+        global.runnable[idx].enqueue(node);
+    }
 }
 
 fn remove(task: *Task) void {
-    _ = global.runnable[task.priority].remove(task);
+    _ = global.runnable[task.priority].remove(&task.sch_state.list_node);
     if(global.runnable[task.priority].isEmpty()) {
         global.bitmask.clear(task.priority);
     }
@@ -146,11 +139,17 @@ fn remove(task: *Task) void {
 
 fn switchTo(task: *Task, prev_task_cpu_state: *CpuState) void {
     global.current_task.cpu_state = prev_task_cpu_state.*;
+    add(global.current_task);
+    uart.print("{x} != {x}\n", .{@intFromPtr(global.current_task.vm_handler.l1), @intFromPtr(task.vm_handler.l1)});
+    if(@intFromPtr(global.current_task.vm_handler.l1) != @intFromPtr(task.vm_handler.l1)) {
+        arm.invalidateTLBUnified();
+    }
     global.current_task = task;
 }
 
 fn tryContextSwitch(irq_cpu_state: *CpuState) void {
     const next_task = next();
+    remove(next_task);
     switchTo(next_task, irq_cpu_state);
     irq_cpu_state.* = next_task.cpu_state;
 }

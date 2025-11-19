@@ -1,10 +1,20 @@
 const uart = @import("uart");
 
 pub const CPSR = packed struct(u32) {
-    M: u5,
+    Mode: enum(u5) {
+        User = 0b10000,
+        FIQ = 0b10001,
+        IRQ = 0b10010,
+        Supervisor = 0b10011,
+        Monitor = 0b10110,
+        Abort = 0b10111,
+        Hyp = 0b11010,
+        Undefined = 0b11011,
+        System = 0b11111,
+    },
     T: u1,
     F: u1,
-    I: u1,
+    I: enum(u1) { Masked = 1, Unmaksed = 0 },
     A: u1,
     E: u1,
     IT: u6,
