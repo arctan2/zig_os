@@ -127,6 +127,27 @@ pub fn build(b: *std.Build) void {
         }
     });
 
+    const fs = b.createModule(.{
+        .root_source_file = b.path("src/fs/fs.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+        }
+    });
+
+    const vfs = b.createModule(.{
+        .root_source_file = b.path("src/vfs/vfs.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+            .{.name = "fs", .module = fs},
+        }
+    });
+
     const syscall = b.createModule(.{
         .root_source_file = b.path("src/kernel/syscall/syscall.zig"),
         .target = target,
@@ -153,6 +174,8 @@ pub fn build(b: *std.Build) void {
             .{.name = "mmio", .module = mmio},
             .{.name = "devices", .module = devices},
             .{.name = "syscall", .module = syscall},
+            .{.name = "vfs", .module = vfs},
+            .{.name = "fs", .module = fs},
         }
     });
 

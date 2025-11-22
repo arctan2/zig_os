@@ -1,0 +1,78 @@
+const fs = @import("fs.zig");
+const VNode = fs.VNode;
+
+const Context = struct {};
+
+ctx: Context,
+
+fn lookup(ptr: *anyopaque, path: []const u8) ?*VNode {
+    const self: *Context = @ptrCast(ptr);
+    _ = self;
+    _ = path;
+    _ = path;
+    return null;
+}
+
+fn create(ptr: *anyopaque, path: []const u8) ?*VNode {
+    const self: *Context = @ptrCast(ptr);
+    _ = self;
+    _ = path;
+    return null;
+}
+
+fn rename(ptr: *anyopaque, vnode: *VNode, name: []const u8) void {
+    const self: *Context = @ptrCast(ptr);
+    _ = self;
+    _ = vnode;
+    _ = name;
+}
+
+fn mkdir(ptr: *anyopaque, path: []const u8) ?*VNode {
+    const self: *Context = @ptrCast(ptr);
+    _ = self;
+    _ = path;
+    _ = path;
+    return null;
+}
+
+fn rmdir(ptr: *anyopaque, path: []const u8) void {
+    const self: *Context = @ptrCast(ptr);
+    _ = self;
+    _ = path;
+}
+
+fn read(ptr: *anyopaque, vnode: *VNode) []u8 {
+    const self: *Context = @ptrCast(ptr);
+    _ = self;
+    _ = vnode;
+    return &.{};
+}
+
+fn write(ptr: *anyopaque, vnode: *VNode, bytes: []u8) void {
+    const self: *Context = @ptrCast(ptr);
+    _ = self;
+    _ = vnode;
+    _ = bytes;
+}
+
+pub const fs_ops: fs.FsOps = .{
+    .i_ops = .{
+        .lookup = lookup,
+        .create = create,
+        .mkdir = mkdir,
+        .rmdir = rmdir,
+        .rename = rename
+    },
+    .f_ops = .{
+        .read = read,
+        .write = write
+    }
+};
+
+const Self = @This();
+
+pub fn init() Self {
+    return .{
+        .ctx = .{}
+    };
+}

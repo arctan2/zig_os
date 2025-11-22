@@ -10,6 +10,8 @@ const devices = @import("devices");
 const interrupts = @import("interrupts.zig");
 const scheduler = @import("scheduler.zig");
 const syscall = @import("syscall");
+const vfs = @import("vfs");
+const fs = @import("fs");
 pub const ih = @import("interrupt_handlers.zig");
 
 pub const std_options: std.Options = .{
@@ -49,6 +51,12 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     initStacks();
 
     scheduler.init(kvmem);
+
+    vfs.init(mm.kalloc) catch @panic("out of mem");
+
+    var init_ram_fs = fs.InitRamFs.init();
+
+    vfs.dock("/", fs.InitRamFs.fs_ops, &init_ram_fs.ctx) catch unreachable;
 
     var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
     var another_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
