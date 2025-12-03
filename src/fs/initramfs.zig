@@ -1,12 +1,15 @@
 const fs = @import("fs.zig");
 const VNode = fs.VNode;
 
-const Context = struct {};
+pub const Context = struct {
+    start: usize,
+    end: usize,
+};
 
 ctx: Context,
 
 fn lookup(ptr: *anyopaque, path: []const u8) ?*VNode {
-    const self: *Context = @ptrCast(ptr);
+    const self: *Context = @ptrCast(@alignCast(ptr));
     _ = self;
     _ = path;
     _ = path;
@@ -14,21 +17,21 @@ fn lookup(ptr: *anyopaque, path: []const u8) ?*VNode {
 }
 
 fn create(ptr: *anyopaque, path: []const u8) ?*VNode {
-    const self: *Context = @ptrCast(ptr);
+    const self: *Context = @ptrCast(@alignCast(ptr));
     _ = self;
     _ = path;
     return null;
 }
 
 fn rename(ptr: *anyopaque, vnode: *VNode, name: []const u8) void {
-    const self: *Context = @ptrCast(ptr);
+    const self: *Context = @ptrCast(@alignCast(ptr));
     _ = self;
     _ = vnode;
     _ = name;
 }
 
 fn mkdir(ptr: *anyopaque, path: []const u8) ?*VNode {
-    const self: *Context = @ptrCast(ptr);
+    const self: *Context = @ptrCast(@alignCast(ptr));
     _ = self;
     _ = path;
     _ = path;
@@ -36,20 +39,20 @@ fn mkdir(ptr: *anyopaque, path: []const u8) ?*VNode {
 }
 
 fn rmdir(ptr: *anyopaque, path: []const u8) void {
-    const self: *Context = @ptrCast(ptr);
+    const self: *Context = @ptrCast(@alignCast(ptr));
     _ = self;
     _ = path;
 }
 
 fn read(ptr: *anyopaque, vnode: *VNode) []u8 {
-    const self: *Context = @ptrCast(ptr);
+    const self: *Context = @ptrCast(@alignCast(ptr));
     _ = self;
     _ = vnode;
     return &.{};
 }
 
 fn write(ptr: *anyopaque, vnode: *VNode, bytes: []u8) void {
-    const self: *Context = @ptrCast(ptr);
+    const self: *Context = @ptrCast(@alignCast(ptr));
     _ = self;
     _ = vnode;
     _ = bytes;
@@ -71,8 +74,12 @@ pub const fs_ops: fs.FsOps = .{
 
 const Self = @This();
 
-pub fn init() Self {
+pub fn init(ramdisk: []const u8) Self {
+    const start = @intFromPtr(ramdisk.ptr);
     return .{
-        .ctx = .{}
+        .ctx = .{
+            .start = start,
+            .end = start + ramdisk.len, 
+        }
     };
 }

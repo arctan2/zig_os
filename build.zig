@@ -179,12 +179,14 @@ pub fn build(b: *std.Build) void {
         }
     });
 
+    kernel.addObjectFile(b.path("./ramdisk/zig-out/initramfs.o"));
+
     const exe = b.addExecutable(.{
         .name = "kernel",
         .root_module = kernel
     });
 
-    exe.setLinkerScript(b.path("./src/linker.ld"));
+    exe.setLinkerScript(b.path("./linker.ld"));
     exe.bundle_compiler_rt = true;
     exe.addAssemblyFile(b.path("./src/asm/vector_table.S"));
     exe.addAssemblyFile(b.path("./src/asm/start.S"));
@@ -195,3 +197,4 @@ pub fn build(b: *std.Build) void {
     tests.runTests(b);
     runCommands(b);
 }
+

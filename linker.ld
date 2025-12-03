@@ -76,8 +76,10 @@ SECTIONS
 	. = ALIGN(8);
 	_vstack_top = .;
 
-	. = . + 8;
-    . = ALIGN(8);
+	. = ALIGN(0x00100000);
+	.initramfs_img : AT(ADDR(.initramfs_img) - KERNEL_OFFSET) { KEEP(*(.initramfs_img)) }
+	. = ALIGN(0x00100000);
+
 	_vkernel_end = .;
 }
 

@@ -294,7 +294,6 @@ pub fn initGlobal(start_addr: usize, size_bytes: usize, kernel_offset: usize) vo
     const free_pages_start = std.mem.alignForward(usize, start_addr + pages_meta_data_size_bytes, SECTION_SIZE);
     const pages_meta_data: [*]Page = @ptrFromInt(start_addr + kernel_offset);
 
-
     var free_list: [MAX_ORDER]?*Page = .{null} ** MAX_ORDER;
     var i: usize = 0;
 
@@ -308,12 +307,18 @@ if(!builtin.is_test) {
         \\
         \\kernel_end_aligned = {x},
         \\end_addr = {x},
-        \\size_bytes = {},
+        \\size_bytes = {x},
         \\total_pages = {},
         \\last_order_chunks_count = {},
         \\mapped_pages = {} - {},
         \\unmapped_pages_count = {},
-        \\pages_meta_data_size_bytes = {},
+        \\
+        \\pages_meta_data_size_bytes = {x},
+        \\pages_meta_data_start = {x},
+        \\pages_meta_data_end = {x},
+        \\pages_meta_data_start_phys = {x},
+        \\pages_meta_data_end_phys = {x},
+        \\
         \\free_pages_start = {x},
         \\
         \\--------------META DATA END-----------------
@@ -327,6 +332,10 @@ if(!builtin.is_test) {
             @as(u32, 0), mapped_pages_count - 1,
             total_pages - mapped_pages_count,
             pages_meta_data_size_bytes,
+            @intFromPtr(pages_meta_data),
+            @intFromPtr(pages_meta_data) + pages_meta_data_size_bytes,
+            @intFromPtr(pages_meta_data) - kernel_offset,
+            @intFromPtr(pages_meta_data) - kernel_offset + pages_meta_data_size_bytes,
             free_pages_start,
         }
     );
@@ -376,7 +385,6 @@ pub fn pageToPhys(block: *Page) usize {
 pub fn physToPage(phys: usize) ?*Page {
     return global_page_alloc.physToPage(phys);
 }
-
 
 test "page_alloc: allocate and deallocate 1 block in every order" {
     const allocator = std.heap.page_allocator;

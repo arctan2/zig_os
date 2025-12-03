@@ -113,7 +113,7 @@ setup_l1:
 	ldr r2, =_early_kernel_end
 
 	setup_l1_loop:
-		cmp r3, #3
+		cmp r3, #8
 		beq setup_l1_loop_end
 
 		bl kernel_map_section

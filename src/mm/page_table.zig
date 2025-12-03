@@ -204,10 +204,10 @@ pub const L2PageTable = struct {
 };
 
 pub inline fn physToL1Virt(addr: usize) *L1PageTable {
-    return @ptrFromInt(kglobal.physToVirt(addr));
+    return @ptrFromInt(kglobal.physToVirtByKernelOffset(addr));
 }
 
 pub inline fn physToL2Virt(addr: usize) *L2PageTable {
-    return @ptrFromInt(kglobal.physToVirt(addr));
+    return @ptrFromInt(kglobal.physToVirtByKernelOffset(addr));
 }
 

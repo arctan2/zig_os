@@ -13,7 +13,7 @@ var gpa_allocator = std.heap.DebugAllocator(.{ .safety = false, .MutexType = ato
 pub const kalloc = gpa_allocator.allocator();
 
 pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kvmem: *vm_handler.VMHandler) !void {
-    const high_kernel_start = @intFromPtr(&kglobal._early_kernel_start) + (page_alloc.SECTION_SIZE * 3);
+    const high_kernel_start = @intFromPtr(&kglobal._early_kernel_start);
     const mem_end = kbounds.free_region_start + kbounds.free_region_size;
     
     var cur = std.mem.alignForward(usize, high_kernel_start, page_alloc.SECTION_SIZE);

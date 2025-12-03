@@ -32,6 +32,7 @@ pub const KernelBounds = struct {
         const kernel_size_phys = early_kernel_size + vkernel_size;
         const mem_end = mem_start + mem_size;
         const free_region_start = mem_start + kernel_size_phys;
+
         return .{
             .kernel_start_phys = @intFromPtr(&PHYS_BASE),
             .kernel_size_phys = kernel_size_phys,
@@ -69,16 +70,30 @@ comptime {
     }
 }
 
-pub inline fn physToVirt(phys: usize) usize {
+pub inline fn physToVirtByKernelOffset(phys: usize) usize {
     if (builtin.is_test) {
         return phys;
     }
     return phys + @intFromPtr(&KERNEL_OFFSET);
 }
 
-pub inline fn virtToPhys(virt: usize) usize {
+pub inline fn virtToPhysByKernelOffset(virt: usize) usize {
     if (builtin.is_test) {
         return virt;
     }
     return virt - @intFromPtr(&KERNEL_OFFSET);
+}
+
+pub inline fn physToVirtByVirtOffset(phys: usize) usize {
+    if (builtin.is_test) {
+        return phys;
+    }
+    return phys + VIRT_OFFSET;
+}
+
+pub inline fn virtToPhysByVirtOffset(virt: usize) usize {
+    if (builtin.is_test) {
+        return virt;
+    }
+    return virt - VIRT_OFFSET;
 }

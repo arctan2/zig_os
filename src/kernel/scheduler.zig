@@ -140,7 +140,7 @@ fn remove(task: *Task) void {
 fn switchTo(task: *Task, prev_task_cpu_state: *CpuState) void {
     global.current_task.cpu_state = prev_task_cpu_state.*;
     add(global.current_task);
-    uart.print("{x} != {x}\n", .{@intFromPtr(global.current_task.vm_handler.l1), @intFromPtr(task.vm_handler.l1)});
+    // uart.print("{x} != {x}\n", .{@intFromPtr(global.current_task.vm_handler.l1), @intFromPtr(task.vm_handler.l1)});
     if(@intFromPtr(global.current_task.vm_handler.l1) != @intFromPtr(task.vm_handler.l1)) {
         arm.invalidateTLBUnified();
     }
