@@ -2,8 +2,7 @@ const fs = @import("fs.zig");
 const VNode = fs.VNode;
 
 pub const Context = struct {
-    start: usize,
-    end: usize,
+    data: []const u8
 };
 
 ctx: Context,
@@ -74,12 +73,10 @@ pub const fs_ops: fs.FsOps = .{
 
 const Self = @This();
 
-pub fn init(ramdisk: []const u8) Self {
-    const start = @intFromPtr(ramdisk.ptr);
+pub fn init(data: []const u8) Self {
     return .{
         .ctx = .{
-            .start = start,
-            .end = start + ramdisk.len, 
+            .data = data
         }
     };
 }

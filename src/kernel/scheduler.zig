@@ -34,7 +34,7 @@ pub fn TaskInfo(comptime SchedState: type) type {
             Blocked,
         },
         priority: usize,
-        vm_handler: mm.vm_handler.VMHandler,
+        vma: mm.vma.Vma,
         time_remaining: usize,
         children: ?*ListNode(T, "children"),
         parent: ?*T,
@@ -46,7 +46,7 @@ pub fn TaskInfo(comptime SchedState: type) type {
                 .id = 0,
                 .state = .Running,
                 .priority = 31,
-                .vm_handler = undefined,
+                .vma = undefined,
                 .time_remaining = TimeSlice.DEFAULT,
                 .children = null,
                 .parent = null,
@@ -88,8 +88,8 @@ pub var global = Scheduler{
     .current_task = &idle_task
 };
 
-pub fn init(kvmem: mm.vm_handler.VMHandler) void {
-    idle_task.vm_handler = kvmem;
+pub fn init(kvmem: mm.vma.Vma) void {
+    idle_task.vma = kvmem;
     idle_task.cpu_state = .{
         .lr = 0,
         .sp = @intFromPtr(&mm.kglobal._vstack_top),
@@ -140,8 +140,8 @@ fn remove(task: *Task) void {
 fn switchTo(task: *Task, prev_task_cpu_state: *CpuState) void {
     global.current_task.cpu_state = prev_task_cpu_state.*;
     add(global.current_task);
-    // uart.print("{x} != {x}\n", .{@intFromPtr(global.current_task.vm_handler.l1), @intFromPtr(task.vm_handler.l1)});
-    if(@intFromPtr(global.current_task.vm_handler.l1) != @intFromPtr(task.vm_handler.l1)) {
+    // uart.print("{x} != {x}\n", .{@intFromPtr(global.current_task.vma.l1), @intFromPtr(task.vma.l1)});
+    if(@intFromPtr(global.current_task.vma.l1) != @intFromPtr(task.vma.l1)) {
         arm.invalidateTLBUnified();
     }
     global.current_task = task;

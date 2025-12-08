@@ -14,7 +14,7 @@ var mmio_mapper = struct {
     }
 } { .cur = kglobal.MMIO_BASE };
 
-pub fn init(kvmem: *mm.vm_handler.VMHandler, fdt_base: [*]const u8) void {
+pub fn init(kvmem: *mm.vma.Vma, fdt_base: [*]const u8) void {
     const UART_BASE = mmio_mapper.nextAddr();
     kvmem.map(UART_BASE, uart.getUartBase(), .{ .type = .Section }) catch unreachable;
     uart.setBase(UART_BASE);
@@ -22,7 +22,7 @@ pub fn init(kvmem: *mm.vm_handler.VMHandler, fdt_base: [*]const u8) void {
     initGicv2(kvmem, fdt_base);
 }
 
-fn initGicv2(kvmem: *mm.vm_handler.VMHandler, fdt_base: [*]const u8) void {
+fn initGicv2(kvmem: *mm.vma.Vma, fdt_base: [*]const u8) void {
     const GIC_BASE = mmio_mapper.nextAddr();
     const fdt_accessor = fdt.Accessor.init(fdt_base);
 

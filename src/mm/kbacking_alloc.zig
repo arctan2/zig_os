@@ -1,6 +1,6 @@
 const std = @import("std");
 const page_alloc = @import("page_alloc.zig");
-const vm_handler = @import("vm_handler.zig");
+const vma = @import("vma.zig");
 const kglobal = @import("kglobal.zig");
 const Allocator = std.mem.Allocator;
 const Alignment = std.mem.Alignment;
@@ -53,7 +53,7 @@ test "alloc and dealloc ints" {
     var testing_allocator = std.testing.allocator;
     const g = try testing_utils.testBasicInit(&testing_allocator);
     defer testing_allocator.free(g.memory);
-    var mem = try vm_handler.VMHandler.init();
+    var mem = try vma.Vma.init();
 
     const start: usize = g.start;
 
@@ -86,7 +86,7 @@ test "alloc and dealloc structs" {
     var testing_allocator = std.testing.allocator;
     const g = try testing_utils.testBasicInit(&testing_allocator);
     defer testing_allocator.free(g.memory);
-    var mem = try vm_handler.VMHandler.init();
+    var mem = try vma.Vma.init();
 
     const start: usize = g.start;
 
@@ -130,7 +130,7 @@ test "alloc and dealloc array list" {
     var testing_allocator = std.testing.allocator;
     const g = try testing_utils.testBasicInit(&testing_allocator);
     defer testing_allocator.free(g.memory);
-    var mem = try vm_handler.VMHandler.init();
+    var mem = try vma.Vma.init();
 
     const start: usize = g.start;
 

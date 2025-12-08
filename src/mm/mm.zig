@@ -2,7 +2,7 @@ const std = @import("std");
 const uart = @import("uart");
 const atomic = @import("atomic");
 pub const page_table = @import("page_table.zig");
-pub const vm_handler = @import("vm_handler.zig");
+pub const vma = @import("vma.zig");
 pub const kglobal = @import("kglobal.zig");
 pub const page_alloc = @import("page_alloc.zig");
 
@@ -12,7 +12,7 @@ var gpa_allocator = std.heap.DebugAllocator(.{ .safety = false, .MutexType = ato
 };
 pub const kalloc = gpa_allocator.allocator();
 
-pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kvmem: *vm_handler.VMHandler) !void {
+pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kvmem: *vma.Vma) !void {
     const high_kernel_start = @intFromPtr(&kglobal._early_kernel_start);
     const mem_end = kbounds.free_region_start + kbounds.free_region_size;
     
@@ -23,12 +23,12 @@ pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kvmem: *vm_h
     }
 }
 
-pub fn unmapIdentityKernel(kbounds: *const kglobal.KernelBounds, kvmem: *vm_handler.VMHandler) void {
+pub fn unmapIdentityKernel(kbounds: *const kglobal.KernelBounds, kvmem: *vma.Vma) void {
     const addr = kbounds.kernel_start_phys;
     kvmem.unmap(addr);
 }
 
 comptime {
-    std.testing.refAllDecls(vm_handler);
+    std.testing.refAllDecls(vma);
     std.testing.refAllDecls(kbacking_alloc);
 }

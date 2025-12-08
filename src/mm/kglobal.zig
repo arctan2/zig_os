@@ -14,11 +14,21 @@ pub extern const _early_kernel_start: u8;
 pub extern const _early_kernel_end: u8;
 pub extern const _vkernel_start: u8;
 pub extern const _vkernel_end: u8;
+
 pub extern const _vstack_top: u8;
 pub extern const _irq_stack_top: u8;
 pub extern const _sys_stack_top: u8;
 pub extern const _pabort_stack_top: u8;
+
 pub extern const _kernel_l1_page_table_phys: u8;
+
+pub extern const _binary_initramfs_img_cpio_start: [*]const u8;
+pub extern const _binary_initramfs_img_cpio_end: u8;
+pub extern const _binary_initramfs_img_cpio_size: u8;
+
+pub fn getRamdisk() []const u8 {
+    return _binary_initramfs_img_cpio_start[0..@intFromPtr(&_binary_initramfs_img_cpio_size)];
+}
 
 pub const KernelBounds = struct {
     kernel_start_phys: usize,

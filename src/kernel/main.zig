@@ -14,14 +14,6 @@ const vfs = @import("vfs");
 const fs = @import("fs");
 pub const ih = @import("interrupt_handlers.zig");
 
-extern const _binary_initramfs_img_cpio_start: [*]const u8;
-extern const _binary_initramfs_img_cpio_end: u8;
-extern const _binary_initramfs_img_cpio_size: u8;
-
-pub fn getRamdisk() []const u8 {
-    return _binary_initramfs_img_cpio_start[0..@intFromPtr(&_binary_initramfs_img_cpio_size)];
-}
-
 pub const std_options: std.Options = .{
     .page_size_max = mm.page_alloc.PAGE_SIZE,
     .page_size_min = mm.page_alloc.PAGE_SIZE,
@@ -38,7 +30,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
 
-    var kvmem = mm.vm_handler.VMHandler{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
+    var kvmem = mm.vma.Vma{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
     uart.setBase(0x09000000);
     mmio.init(&kvmem, fdt_base);
 
@@ -61,7 +53,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     scheduler.init(kvmem);
 
     vfs.init(mm.kalloc) catch @panic("out of mem");
-    var init_ram_fs = fs.InitRamFs.init(getRamdisk());
+    var init_ram_fs = fs.InitRamFs.init(kglobal.getRamdisk());
     vfs.dock("/", fs.InitRamFs.fs_ops, &init_ram_fs.ctx) catch unreachable;
 
     var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");

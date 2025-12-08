@@ -14,7 +14,7 @@ pub fn runTests(b: *std.Build) void {
         .target = target,
     });
     
-    const vm_handler = b.createModule(.{
+    const vma = b.createModule(.{
         .root_source_file = b.path("./src/mm/mm.zig"),
         .target = target,
         .imports = &.{
@@ -22,8 +22,16 @@ pub fn runTests(b: *std.Build) void {
         }
     });
 
-    const tests: [1]*std.Build.Step.Compile = .{
-        b.addTest(.{ .root_module = vm_handler, .filters = tests_filter }),
+    const lib = b.createModule(.{
+        .root_source_file = b.path("./src/lib/lib.zig"),
+        .target = target,
+        .imports = &.{
+        }
+    });
+
+    const tests: [2]*std.Build.Step.Compile = .{
+        b.addTest(.{ .root_module = vma, .filters = tests_filter }),
+        b.addTest(.{ .root_module = lib, .filters = tests_filter }),
     };
 
     for(tests) |t| {
