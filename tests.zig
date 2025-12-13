@@ -26,6 +26,7 @@ pub fn runTests(b: *std.Build) void {
         .root_source_file = b.path("./src/lib/lib.zig"),
         .target = target,
         .imports = &.{
+            .{.name = "utils", .module = utils},
         }
     });
 
