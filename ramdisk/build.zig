@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
 
     const CPIO = "initramfs_img.cpio";
 
-    const cpio = b.addSystemCommand(&.{"sh", "-c", "find ./bin -depth -print0 | cpio -ocv0 > " ++ CPIO});
+    const cpio = b.addSystemCommand(&.{"sh", "-c", "find ./bin -depth -print0 | cpio -oH newc -0v > " ++ CPIO});
     cpio.setCwd(b.path("./zig-out"));
     cpio.step.dependOn(&art.step);
     b.getInstallStep().dependOn(&cpio.step);

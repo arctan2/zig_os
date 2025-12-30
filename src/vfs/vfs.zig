@@ -1,88 +1,66 @@
 const std = @import("std");
+const uart = @import("uart");
 const _fs = @import("fs");
 const FsOps = _fs.FsOps;
-const VNode = _fs.VNode;
+const FsType = _fs.FsType;
+const Vnode = _fs.Vnode;
+const Dentry = _fs.Dentry;
 
 const DockPoint = struct {
     fs_ops: FsOps,
     fs_ptr: *anyopaque,
-    path: []const u8,
+    fs_type: FsType,
+    root_dentry: *Dentry,
+
+    pub const HashKey = struct {
+        path: []const u8,
+
+        const Context = struct {
+            pub fn hash(_: @This(), key: HashKey) u64 {
+                return @as(u64, @intCast(@intFromPtr(key.parent))) + std.hash.Wyhash.hash(0, key.name);
+            }
+
+            pub fn eql(_: @This(), a: HashKey, b: HashKey) bool {
+                return a.parent == b.parent and std.mem.eql(u8, a.name, b.name);
+            }
+        };
+    };
 };
 
 const FileHandle = struct {
-    vnode: *VNode,
+    vnode: *Vnode,
 };
 
-var dock_points: std.ArrayList(DockPoint) = undefined;
-var vnode_cache: std.AutoHashMap(VNode.HashKey, *VNode) = undefined;
-var root_fs: ?*DockPoint = null;
+var vnode_cache: std.AutoHashMap(Vnode.HashKey, *Vnode) = undefined;
+var dentry_cache: std.HashMap(Dentry.HashKey, *Dentry, Dentry.HashKey.Context, 80) = undefined;
+var dock_points: std.StringHashMap(*DockPoint) = undefined;
 
 pub fn init(allocator: std.mem.Allocator) !void {
-    dock_points = try std.ArrayList(DockPoint).initCapacity(allocator, 32);
-    vnode_cache = std.AutoHashMap(VNode.HashKey, *VNode).init(allocator);
+    vnode_cache = .init(allocator);
+    dentry_cache = .init(allocator);
+    dock_points = .init(allocator);
 }
 
-pub fn findDockPointByPathExact(path: []const u8) ?*DockPoint {
-    for(dock_points.items) |*d| {
-        if(std.mem.eql(u8, d.path, path)) {
-            return d;
-        }
-    }
-
-    return null;
-}
-
-pub fn resolveDockPointByPath(path: []const u8) ?*DockPoint {
-    var longest: ?*DockPoint = null;
-    var longest_len: usize = 0;
-
-    for(dock_points.items) |*d| {
-        if(std.mem.startsWith(d.path.ptr, path.ptr)) {
-            if(d.path.len > longest_len) {
-                longest_len = d.len;
-                longest = d;
-            }
-        }
-    }
-
-    return longest orelse root_fs;
-}
-
-pub fn dock(path: []const u8, fs_ops: FsOps, fs_ptr: *anyopaque) error{PathAlreadyExist}!void {
-    if(findDockPointByPathExact(path)) |_| {
-        return error.PathAlreadyExist;
-    }
-    const d = DockPoint{
+pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: FsOps, fs_ptr: *anyopaque, fs_type: FsType) !void {
+    const d = try allocator.create(DockPoint);
+    d.* = .{
         .fs_ops = fs_ops,
+        .fs_type = fs_type,
         .fs_ptr = fs_ptr,
-        .path = path,
+        .root_dentry = fs_ops.getRootDentry(fs_ptr),
     };
-    return dock_points.appendBounded(d) catch error.PathAlreadyExist;
-}
 
-pub fn undock(path: []const u8) void {
-    // TODO: cleanup cache
-    for(0..dock_points.len) |i| {
-        if(std.mem.eql(u8, path, dock_points.items[i].path)) {
-            dock_points.orderedRemove(i);
-            break;
-        }
+    if(dock_points.contains(name)) {
+        return;
     }
+
+    try dock_points.put(name, d);
 }
 
-pub fn makeRoot(path: []const u8, old_root_path: []const u8) error{DockPointNotFound}!void {
-    const d = findDockPointByPathExact(path) orelse return .DockPointNotFound;
-    if(root_fs) |rfs| {
-        rfs.path = old_root_path;
-        d.path = "/";
-    } else {
-        root_fs = d;
-    }
+pub fn open(allocator: std.mem.Allocator, _: []const u8) error{NotFound, OutOfMemory}!*FileHandle {
+    return try allocator.create(FileHandle);
 }
 
-// pub fn open(path: []const u8) !FileHandle {
-// }
-// 
 // pub fn close(f: *FileHandle) void {
 // }
 // 

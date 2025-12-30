@@ -149,16 +149,16 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
         .int => {
             switch(fmt[begin]) {
                 'x' => {
-                    putHex(usize, arg);
+                    putHex(usize, @intCast(arg));
                 },
                 'c' => {
                     putc(arg);
                 },
                 'b' => {
-                    putBin(usize, arg);
+                    putBin(usize, @intCast(arg));
                 },
                 '}' => {
-                    putInt(usize, arg);
+                    putInt(usize, @intCast(arg));
                 },
                 else => {
                     @compileError("invalid mode or " ++ NO_MATCHING_CURLY);
@@ -194,8 +194,20 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
                 puts("null");
             }
         },
-        .pointer => {
-            printInternal(fmt, begin, end, 0, .{@intFromPtr(arg)});
+        .pointer => |ptr_info| switch (ptr_info.size) {
+            .slice => {
+                puts("{ len: ");
+                putInt(usize, arg.len);
+                puts(", items: [");
+                for(arg, 0..) |a, i| {
+                    printInternal(fmt, begin, end, 0, .{a});
+                    if(fmt[begin] != 'c' and i < arg.len - 1) puts(", ");
+                }
+                puts("] }");
+            },
+            else => {
+                printInternal(fmt, begin, end, 0, .{@intFromPtr(arg)});
+            }
         },
         .array => {
             putc('[');

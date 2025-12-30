@@ -25,6 +25,14 @@ pub const os = struct {
     };
 };
 
+fn initProcess() void {
+    const f = vfs.open(mm.kalloc, "/bin/init") catch {
+        @panic("init not found.");
+    };
+
+    uart.print("f = {x}\n", .{f});
+}
+
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
     _ = ih.irq_handler;
 
@@ -53,24 +61,28 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     scheduler.init(kvmem);
 
     vfs.init(mm.kalloc) catch @panic("out of mem");
-    var init_ram_fs = fs.InitRamFs.init(kglobal.getRamdisk());
-    vfs.dock("/", fs.InitRamFs.fs_ops, &init_ram_fs.ctx) catch unreachable;
+    const init_ram_fs_ctx = fs.InitRamFs.init(mm.kalloc, kglobal.getRamdisk()) catch @panic("out of mem");
+    vfs.dock(mm.kalloc, "/", fs.InitRamFs.fs_ops, init_ram_fs_ctx, .Ram) catch {
+        @panic("fs already exists on that name. Unmount it first.");
+    };
 
-    var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
-    var another_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
+    initProcess();
 
-    cool_task.cpu_state = scheduler.idle_task.cpu_state;
-    cool_task.cpu_state.pc = @intFromPtr(&coolTask);
-    cool_task.priority = 30;
-    cool_task.cpu_state.sp = @intFromPtr((mm.kalloc.alloc(u8, 4096) catch @panic("out of memory")).ptr);
+    // var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
+    // var another_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
 
-    another_task.cpu_state = scheduler.idle_task.cpu_state;
-    another_task.cpu_state.pc = @intFromPtr(&lame_task);
-    another_task.priority = 30;
-    another_task.cpu_state.sp = @intFromPtr((mm.kalloc.alloc(u8, 4096) catch @panic("out of memory")).ptr);
+    // cool_task.cpu_state = scheduler.idle_task.cpu_state;
+    // cool_task.cpu_state.pc = @intFromPtr(&coolTask);
+    // cool_task.priority = 30;
+    // cool_task.cpu_state.sp = @intFromPtr((mm.kalloc.alloc(u8, 4096) catch @panic("out of memory")).ptr);
 
-    scheduler.add(another_task);
-    scheduler.add(cool_task);
+    // another_task.cpu_state = scheduler.idle_task.cpu_state;
+    // another_task.cpu_state.pc = @intFromPtr(&lame_task);
+    // another_task.priority = 30;
+    // another_task.cpu_state.sp = @intFromPtr((mm.kalloc.alloc(u8, 4096) catch @panic("out of memory")).ptr);
+
+    // scheduler.add(another_task);
+    // scheduler.add(cool_task);
 
     const fdt_accessor = fdt.Accessor.init(fdt_base);
     interrupts.setup(&fdt_accessor);

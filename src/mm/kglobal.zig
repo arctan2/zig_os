@@ -22,12 +22,13 @@ pub extern const _pabort_stack_top: u8;
 
 pub extern const _kernel_l1_page_table_phys: u8;
 
-pub extern const _binary_initramfs_img_cpio_start: [*]const u8;
+pub extern const _binary_initramfs_img_cpio_start: u8;
 pub extern const _binary_initramfs_img_cpio_end: u8;
 pub extern const _binary_initramfs_img_cpio_size: u8;
 
 pub fn getRamdisk() []const u8 {
-    return _binary_initramfs_img_cpio_start[0..@intFromPtr(&_binary_initramfs_img_cpio_size)];
+    const data: [*]const u8 = @ptrFromInt(@intFromPtr(&_binary_initramfs_img_cpio_start));
+    return data[0..@intFromPtr(&_binary_initramfs_img_cpio_size)];
 }
 
 pub const KernelBounds = struct {

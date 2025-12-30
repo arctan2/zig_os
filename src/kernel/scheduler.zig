@@ -99,6 +99,7 @@ pub fn init(kvmem: mm.vma.Vma) void {
     };
     idle_task.cpu_state.cpsr.Mode = .User;
     idle_task.cpu_state.cpsr.I = .Unmaksed;
+    global.bitmask.set(idle_task.priority);
 }
 
 pub fn idle() void {
@@ -124,6 +125,7 @@ pub fn add(task: *Task) void {
 
 fn schedule() void {
     const idx = global.bitmask.countZeros();
+    if(idx == 32) return;
     global.runnable[global.current_task.priority].insertFront(&global.current_task.sch_state.list_node);
     if(global.runnable[idx].dequeue()) |node| {
         global.runnable[idx].enqueue(node);
