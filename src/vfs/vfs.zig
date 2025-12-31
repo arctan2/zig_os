@@ -33,12 +33,11 @@ const FileHandle = struct {
 
 var vnode_cache: std.AutoHashMap(Vnode.HashKey, *Vnode) = undefined;
 var dentry_cache: std.HashMap(Dentry.HashKey, *Dentry, Dentry.HashKey.Context, 80) = undefined;
-var dock_points: std.StringHashMap(*DockPoint) = undefined;
+var dock_points: std.StringHashMapUnmanaged(*DockPoint) = .empty;
 
 pub fn init(allocator: std.mem.Allocator) !void {
     vnode_cache = .init(allocator);
     dentry_cache = .init(allocator);
-    dock_points = .init(allocator);
 }
 
 pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: FsOps, fs_ptr: *anyopaque, fs_type: FsType) !void {
@@ -54,7 +53,13 @@ pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: FsOps, fs_pt
         return;
     }
 
-    try dock_points.put(name, d);
+    try dock_points.put(allocator, name, d);
+}
+
+pub fn undock(name: []const u8) ?*DockPoint {
+    const dock_point = dock_points.get(name) orelse return null;
+    _ = dock_points.remove(name);
+    return dock_point;
 }
 
 pub fn open(allocator: std.mem.Allocator, _: []const u8) error{NotFound, OutOfMemory}!*FileHandle {

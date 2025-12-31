@@ -52,10 +52,11 @@ pub const INodeOpsError = error {
 };
 
 pub const INodeOps = struct {
-    lookup: *const fn(ptr: *anyopaque, allocator: std.mem.Allocator, parent: *Vnode, name: []const u8) INodeOpsError!*Vnode,
-    create: *const fn(ptr: *anyopaque, allocator: std.mem.Allocator, parent: *Vnode, name: []const u8) INodeOpsError!void,
-    destroy: *const fn(ptr: *anyopaque, allocator: std.mem.Allocator, parent: *Vnode, name: []const u8) INodeOpsError!void,
-    rename: *const fn(ptr: *anyopaque, allocator: std.mem.Allocator, parent: *Vnode, old: []const u8, new: []const u8) INodeOpsError!void,
+    lookup: *const fn(ptr: *anyopaque, parent: *Vnode, name: []const u8) INodeOpsError!*Vnode,
+    create: *const fn(ptr: *anyopaque, parent: *Vnode, name: []const u8) INodeOpsError!void,
+    destroy: *const fn(ptr: *anyopaque, parent: *Vnode, name: []const u8) error{DoesNotExist}!void,
+    resize: *const fn(ptr: *anyopaque, vnode: *Vnode, len: usize) error{OutOfMemory}!void,
+    rename: *const fn(ptr: *anyopaque, parent: *Vnode, old: []const u8, new: []const u8) INodeOpsError!void,
 };
 
 pub const FileOps = struct {
@@ -66,5 +67,6 @@ pub const FileOps = struct {
 pub const FsOps = struct {
     i_ops: INodeOps,
     f_ops: FileOps,
-    getRootDentry: *const fn(ptr: *anyopaque) *Dentry
+    getRootDentry: *const fn(ptr: *anyopaque) *Dentry,
+    deinit: *const fn(ptr: *anyopaque) anyerror!void
 };

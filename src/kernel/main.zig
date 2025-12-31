@@ -66,6 +66,10 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
         @panic("fs already exists on that name. Unmount it first.");
     };
 
+    if(vfs.undock("/")) |d| {
+        d.fs_ops.deinit(d.fs_ptr) catch @panic("out of memory");
+    }
+
     initProcess();
 
     // var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
