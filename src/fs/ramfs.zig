@@ -15,7 +15,7 @@ pub const FileNode = struct {
     }
 };
 
-root_dentry: *Dentry,
+root_dentry: Dentry,
 cur_inode_num_counter: usize,
 allocator: std.mem.Allocator,
 
@@ -81,7 +81,7 @@ fn rename(ptr: *anyopaque, parent: *Vnode, old: []const u8, new: []const u8) !vo
 
 fn getRootDentry(ptr: *anyopaque) *Dentry {
     const self: *Self = @ptrCast(@alignCast(ptr));
-    return self.root_dentry;
+    return &self.root_dentry;
 }
 
 fn read(_: *anyopaque, vnode: *Vnode, offset: usize, buf: []u8) usize {
@@ -111,6 +111,7 @@ fn write(ptr: *anyopaque, vnode: *Vnode, offset: usize, buf: []const u8) usize {
     return count;
 }
 
+// frees only the FileNode tree, NOT the outer vnode or dentry
 fn deinit(ptr: *anyopaque) !void {
     const self: *Self = @ptrCast(@alignCast(ptr));
     const root_vnode = self.root_dentry.vnode orelse return;
@@ -122,8 +123,10 @@ fn deinit(ptr: *anyopaque) !void {
     try stack.append(self.allocator, root_file);
 
     while(stack.pop()) |f| {
-        var iter = f.children.valueIterator();
-        while(iter.next()) |val| try stack.append(self.allocator, val.*);
+        var iter = f.children.iterator();
+        while(iter.next()) |entry| {
+            try stack.append(self.allocator, entry.value_ptr.*);
+        }
         if(f.data) |data| self.allocator.free(data);
         self.allocator.destroy(f);
     }
@@ -146,15 +149,8 @@ pub const fs_ops: fs.FsOps = .{
 };
 
 pub fn initManaged(allocator: std.mem.Allocator) !*Self {
-    const root_dentry = try allocator.create(Dentry);
     const root_vnode = try allocator.create(Vnode);
     const self = try allocator.create(Self);
-    
-    self.* = .{
-        .cur_inode_num_counter = 0,
-        .root_dentry = root_dentry,
-        .allocator = allocator
-    };
 
     root_vnode.* = .{
         .fs_data = try FileNode.init(allocator),
@@ -163,11 +159,15 @@ pub fn initManaged(allocator: std.mem.Allocator) !*Self {
         .ref_count = 0,
     };
 
-    root_dentry.* = .{
-        .name = "/",
-        .parent = null,
-        .vnode = root_vnode,
-        .ref_count = 0
+    self.* = .{
+        .cur_inode_num_counter = 0,
+        .root_dentry = .{
+            .name = "/",
+            .parent = null,
+            .vnode = root_vnode,
+            .ref_count = 0
+        },
+        .allocator = allocator
     };
 
     return self;

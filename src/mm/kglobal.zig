@@ -26,9 +26,14 @@ pub extern const _binary_initramfs_img_cpio_start: u8;
 pub extern const _binary_initramfs_img_cpio_end: u8;
 pub extern const _binary_initramfs_img_cpio_size: u8;
 
-pub fn getRamdisk() []const u8 {
-    const data: [*]const u8 = @ptrFromInt(@intFromPtr(&_binary_initramfs_img_cpio_start));
-    return data[0..@intFromPtr(&_binary_initramfs_img_cpio_size)];
+pub fn getInitRamfs(kbounds: *const KernelBounds) []const u8 {
+    const ptr: [*]const u8 = @ptrFromInt(@intFromPtr(&_binary_initramfs_img_cpio_start));
+    const data = ptr[0..@intFromPtr(&_binary_initramfs_img_cpio_size)];
+    const off_phys = std.mem.alignBackward(usize, (kbounds.free_region_start + kbounds.free_region_size) - data.len, page_alloc.SECTION_SIZE);
+    const offset_ptr: [*]u8 = @ptrFromInt(physToVirtByKernelOffset(off_phys));
+    const new_initramfs_img_copy: []u8 = offset_ptr[0..data.len];
+    @memcpy(new_initramfs_img_copy, data);
+    return new_initramfs_img_copy;
 }
 
 pub const KernelBounds = struct {
@@ -59,6 +64,7 @@ pub const KernelBounds = struct {
             \\  kernel_size_phys = {x},
             \\  free_region_start = {x},
             \\  free_region_size = {x},
+            \\  whole_ram_end = {x},
             \\}
             \\
         , .{
@@ -66,6 +72,7 @@ pub const KernelBounds = struct {
             self.kernel_size_phys,
             self.free_region_start,
             self.free_region_size,
+            self.free_region_start + self.free_region_size,
         });
     }
 };

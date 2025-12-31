@@ -26,11 +26,9 @@ pub const os = struct {
 };
 
 fn initProcess() void {
-    const f = vfs.open(mm.kalloc, "/bin/init") catch {
+    _ = vfs.open(mm.kalloc, "/bin/init") catch {
         @panic("init not found.");
     };
-
-    uart.print("f = {x}\n", .{f});
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
@@ -44,31 +42,28 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     const mem = fdt.getMemStartSize(fdt_base);
     const kbounds = kglobal.KernelBounds.init(mem.start, mem.size);
-
     kbounds.print();
-
-    mm.page_alloc.initGlobal(kbounds.free_region_start, kbounds.free_region_size, kglobal.VIRT_OFFSET);
-
-    mm.mapFreePagesToKernelL1(&kbounds, &kvmem) catch {
-        @panic("error in mapFreePagesToKernelL1");
-    };
-
+    mm.mapFreePagesToKernelL1(&kbounds, &kvmem) catch @panic("error in mapFreePagesToKernelL1");
     kvmem.map(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }) catch unreachable;
     mm.unmapIdentityKernel(&kbounds, &kvmem);
 
+    const initramfs_img = kglobal.getInitRamfs(&kbounds);
+    
+    mm.page_alloc.initGlobal(kbounds.free_region_start, kbounds.free_region_size, kglobal.VIRT_OFFSET);
     initStacks();
 
     scheduler.init(kvmem);
 
     vfs.init(mm.kalloc) catch @panic("out of mem");
-    const init_ram_fs_ctx = fs.InitRamFs.init(mm.kalloc, kglobal.getRamdisk()) catch @panic("out of mem");
-    vfs.dock(mm.kalloc, "/", fs.InitRamFs.fs_ops, init_ram_fs_ctx, .Ram) catch {
+    const initramfs_ctx = fs.InitRamFs.init(mm.kalloc, initramfs_img) catch @panic("out of mem");
+    vfs.dock(mm.kalloc, "/", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram) catch {
         @panic("fs already exists on that name. Unmount it first.");
     };
 
-    if(vfs.undock("/")) |d| {
-        d.fs_ops.deinit(d.fs_ptr) catch @panic("out of memory");
-    }
+    vfs.undock(mm.kalloc, "/") catch |e| switch(e) {
+        error.NotFound => @panic("'/' not found"),
+        else => @panic("deinit error")
+    };
 
     initProcess();
 

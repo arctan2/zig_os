@@ -75,11 +75,11 @@ SECTIONS
 	. += 0x4000;
 	. = ALIGN(8);
 	_vstack_top = .;
-
-	. = ALIGN(0x00100000);
-	.initramfs_img : AT(ADDR(.initramfs_img) - KERNEL_OFFSET) { KEEP(*(.initramfs_img)) }
+	
 	. = ALIGN(0x00100000);
 
 	_vkernel_end = .;
+
+	.initramfs_img : AT(ADDR(.initramfs_img) - KERNEL_OFFSET) { KEEP(*(.initramfs_img)) }
 }
 

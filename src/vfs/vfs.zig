@@ -56,10 +56,12 @@ pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: FsOps, fs_pt
     try dock_points.put(allocator, name, d);
 }
 
-pub fn undock(name: []const u8) ?*DockPoint {
-    const dock_point = dock_points.get(name) orelse return null;
+pub fn undock(allocator: std.mem.Allocator, name: []const u8) anyerror!void {
+    const d = dock_points.get(name) orelse return error.NotFound;
     _ = dock_points.remove(name);
-    return dock_point;
+    try d.fs_ops.deinit(d.fs_ptr);
+    if(d.root_dentry.vnode) |v| allocator.destroy(v);
+    allocator.destroy(d.root_dentry);
 }
 
 pub fn open(allocator: std.mem.Allocator, _: []const u8) error{NotFound, OutOfMemory}!*FileHandle {
