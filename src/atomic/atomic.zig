@@ -1,1 +1,1 @@
-pub const spinlock = @import("spinlock.zig");
+pub const SpinLock = @import("spinlock.zig");

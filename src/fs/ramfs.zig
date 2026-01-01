@@ -1,21 +1,20 @@
 const std = @import("std");
 const fs = @import("fs.zig");
-const Vnode = fs.Vnode;
-const Dentry = fs.Dentry;
 const uart = @import("uart");
 
 pub const FileNode = struct {
     data: ?[]u8 = null,
+    inode_num: usize,
     children: std.StringHashMapUnmanaged(*FileNode) = .empty,
 
-    inline fn init(allocator: std.mem.Allocator) !*FileNode {
+    inline fn init(allocator: std.mem.Allocator, inode_num: usize) !*FileNode {
         const f = try allocator.create(FileNode);
-        f.* = .{};
+        f.* = .{ .inode_num = inode_num };
         return f;
     }
 };
 
-root_dentry: Dentry,
+root_dentry: fs.Dentry,
 cur_inode_num_counter: usize,
 allocator: std.mem.Allocator,
 
@@ -26,42 +25,40 @@ pub fn getNextInodeNum(self: *Self) usize {
     return self.cur_inode_num_counter;
 }
 
-fn lookup(ptr: *anyopaque, parent: *Vnode, name: []const u8) !*Vnode {
-    const self: *Self = @ptrCast(@alignCast(ptr));
-    const parent_file: *FileNode  = @ptrCast(@alignCast(parent.fs_data));
-    
+fn lookup(_: *anyopaque, parent: *fs.Inode, name: []const u8) !fs.FsData {
+    const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
+
     if(parent_file.children.get(name)) |file| {
-        const vnode = try self.allocator.create(Vnode);
-        vnode.* = .{
-            .fs_data = file,
-            .dock_point_id = 0,
-            .inode_num = self.getNextInodeNum(),
-            .ref_count = 0,
-        };
-        return vnode;
+        return .{ .ptr = file, .inode_num = file.inode_num };
     }
 
     return error.DoesNotExist;
 }
 
-fn create(ptr: *anyopaque, parent: *Vnode, name: []const u8) !void {
+fn create(ptr: *anyopaque, parent: *fs.Inode, name: []const u8) !void {
     const self: *Self = @ptrCast(@alignCast(ptr));
-    const parent_file: *FileNode  = @ptrCast(@alignCast(parent.fs_data));
+    const parent_file: *FileNode  = @ptrCast(@alignCast(parent.fs_data.ptr));
     if(parent_file.children.contains(name)) {
         return error.AlreadyExist;
     }
-    const file = try FileNode.init(self.allocator);
+    const file = try FileNode.init(self.allocator, self.getNextInodeNum());
     try parent_file.children.put(self.allocator, name, file);
 }
 
-fn destroy(_: *anyopaque, parent: *Vnode, name: []const u8) !void {
-    const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data));
-    return if(parent_file.children.remove(name)) {} else error.DoesNotExist;
+fn destroy(ptr: *anyopaque, parent: *fs.Inode, name: []const u8) !void {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
+    if(parent_file.children.get(name)) |child| {
+        try iterativeDestroyFileNode(self.allocator, child);
+        _ = parent_file.children.remove(name);
+    } else {
+        return error.DoesNotExist;
+    }
 }
 
-fn resize(ptr: *anyopaque, vnode: *Vnode, len: usize) !void {
+fn resize(ptr: *anyopaque, inode: *fs.Inode, len: usize) !void {
     const self: *Self = @ptrCast(@alignCast(ptr));
-    const file: *FileNode = @ptrCast(@alignCast(vnode.fs_data));
+    const file: *FileNode = @ptrCast(@alignCast(inode.fs_data.ptr));
     if(file.data) |data| {
         file.data = try self.allocator.realloc(data, len);
     } else {
@@ -69,9 +66,9 @@ fn resize(ptr: *anyopaque, vnode: *Vnode, len: usize) !void {
     }
 }
 
-fn rename(ptr: *anyopaque, parent: *Vnode, old: []const u8, new: []const u8) !void {
+fn rename(ptr: *anyopaque, parent: *fs.Inode, old: []const u8, new: []const u8) !void {
     const self: *Self = @ptrCast(@alignCast(ptr));
-    const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data));
+    const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
     if(parent_file.children.get(old)) |child| {
         _ = parent_file.children.remove(old);
         try parent_file.children.put(self.allocator, new, child);
@@ -79,13 +76,13 @@ fn rename(ptr: *anyopaque, parent: *Vnode, old: []const u8, new: []const u8) !vo
     return error.DoesNotExist;
 }
 
-fn getRootDentry(ptr: *anyopaque) *Dentry {
+fn getRootDentry(ptr: *anyopaque) *fs.Dentry {
     const self: *Self = @ptrCast(@alignCast(ptr));
     return &self.root_dentry;
 }
 
-fn read(_: *anyopaque, vnode: *Vnode, offset: usize, buf: []u8) usize {
-    const file: *FileNode = @ptrCast(@alignCast(vnode.fs_data));
+fn read(_: *anyopaque, inode: *fs.Inode, offset: usize, buf: []u8) usize {
+    const file: *FileNode = @ptrCast(@alignCast(inode.fs_data.ptr));
     if(file.data) |data| {
         const end = @min(offset + buf.len, data.len);
         const count = end - offset;
@@ -95,41 +92,44 @@ fn read(_: *anyopaque, vnode: *Vnode, offset: usize, buf: []u8) usize {
     return 0;
 }
 
-fn write(ptr: *anyopaque, vnode: *Vnode, offset: usize, buf: []const u8) usize {
-    const file: *FileNode = @ptrCast(@alignCast(vnode.fs_data));
+fn write(ptr: *anyopaque, inode: *fs.Inode, offset: usize, buf: []const u8) usize {
+    const file: *FileNode = @ptrCast(@alignCast(inode.fs_data.ptr));
     const end = offset + buf.len;
     const count = end - offset;
 
     if(file.data) |data| {
         if(end > data.len) {
-            resize(ptr, vnode, end) catch return 0;
+            resize(ptr, inode, end) catch return 0;
         }
     } else {
-        resize(ptr, vnode, end) catch return 0;
+        resize(ptr, inode, end) catch return 0;
     }
     @memcpy(file.data.?[offset..end], buf);
     return count;
 }
 
-// frees only the FileNode tree, NOT the outer vnode or dentry
-fn deinit(ptr: *anyopaque) !void {
-    const self: *Self = @ptrCast(@alignCast(ptr));
-    const root_vnode = self.root_dentry.vnode orelse return;
-    var stack = try std.ArrayList(*FileNode).initCapacity(self.allocator, 32);
-    defer stack.deinit(self.allocator);
+fn iterativeDestroyFileNode(allocator: std.mem.Allocator, root_file: *FileNode) !void {
+    var stack = try std.ArrayList(*FileNode).initCapacity(allocator, 32);
+    defer stack.deinit(allocator);
 
-    const root_file: *FileNode = @ptrCast(@alignCast(root_vnode.fs_data));
-
-    try stack.append(self.allocator, root_file);
+    try stack.append(allocator, root_file);
 
     while(stack.pop()) |f| {
         var iter = f.children.iterator();
         while(iter.next()) |entry| {
-            try stack.append(self.allocator, entry.value_ptr.*);
+            try stack.append(allocator, entry.value_ptr.*);
         }
-        if(f.data) |data| self.allocator.free(data);
-        self.allocator.destroy(f);
+        if(f.data) |data| allocator.free(data);
+        allocator.destroy(f);
     }
+}
+
+// frees only the FileNode tree, NOT the outer inode or dentry
+fn deinit(ptr: *anyopaque) !void {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    const root_inode = self.root_dentry.inode orelse return;
+    const root_file: *FileNode = @ptrCast(@alignCast(root_inode.fs_data.ptr));
+    try iterativeDestroyFileNode(self.allocator, root_file);
 }
 
 pub const fs_ops: fs.FsOps = .{
@@ -149,23 +149,27 @@ pub const fs_ops: fs.FsOps = .{
 };
 
 pub fn initManaged(allocator: std.mem.Allocator) !*Self {
-    const root_vnode = try allocator.create(Vnode);
+    const root_inode = try allocator.create(fs.Inode);
     const self = try allocator.create(Self);
+    const file = try FileNode.init(allocator, self.getNextInodeNum());
 
-    root_vnode.* = .{
-        .fs_data = try FileNode.init(allocator),
-        .dock_point_id = 0,
-        .inode_num = self.getNextInodeNum(),
+    root_inode.* = .{
+        .fs_data = .{
+            .ptr = file,
+            .inode_num = file.inode_num
+        },
+        .dock_point = null,
         .ref_count = 0,
     };
 
     self.* = .{
         .cur_inode_num_counter = 0,
         .root_dentry = .{
-            .name = "/",
+            .name = try allocator.dupe(u8, "/"),
             .parent = null,
-            .vnode = root_vnode,
-            .ref_count = 0
+            .inode = root_inode,
+            .ref_count = 0,
+            .lock = .{}
         },
         .allocator = allocator
     };

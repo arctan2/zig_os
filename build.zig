@@ -144,6 +144,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{.name = "utils", .module = utils},
             .{.name = "uart", .module = uart},
+            .{.name = "atomic", .module = atomic},
         }
     });
 

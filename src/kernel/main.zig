@@ -26,9 +26,10 @@ pub const os = struct {
 };
 
 fn initProcess() void {
-    _ = vfs.open(mm.kalloc, "/bin/init") catch {
+    const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .Read) catch {
         @panic("init not found.");
     };
+    uart.print("f = {x}\n", .{f.*});
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
@@ -56,13 +57,8 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     vfs.init(mm.kalloc) catch @panic("out of mem");
     const initramfs_ctx = fs.InitRamFs.init(mm.kalloc, initramfs_img) catch @panic("out of mem");
-    vfs.dock(mm.kalloc, "/", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram) catch {
+    vfs.dock(mm.kalloc, "initramfs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram) catch {
         @panic("fs already exists on that name. Unmount it first.");
-    };
-
-    vfs.undock(mm.kalloc, "/") catch |e| switch(e) {
-        error.NotFound => @panic("'/' not found"),
-        else => @panic("deinit error")
     };
 
     initProcess();

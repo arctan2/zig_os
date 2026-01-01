@@ -1,7 +1,5 @@
 const std = @import("std");
 const fs = @import("fs.zig");
-const Vnode = fs.Vnode;
-const Dentry = fs.Dentry;
 const uart = @import("uart");
 const Ramfs = @import("ramfs.zig");
 const cpio = @import("cpio.zig");
@@ -10,10 +8,9 @@ pub const fs_ops: fs.FsOps = Ramfs.fs_ops;
 
 fn insertToRamfs(ramfs: *Ramfs, entry: *const cpio.Entry, filename: []const u8) void {
     var parts = std.mem.splitSequence(u8, filename, "/");
-    var cur_parent: Vnode = .{
-        .fs_data = ramfs.root_dentry.vnode.?.fs_data,
-        .dock_point_id = 0,
-        .inode_num = 0,
+    var cur_parent: fs.Inode = .{
+        .fs_data = ramfs.root_dentry.inode.?.fs_data,
+        .dock_point = null,
         .ref_count = 0,
     };
 
@@ -22,8 +19,8 @@ fn insertToRamfs(ramfs: *Ramfs, entry: *const cpio.Entry, filename: []const u8) 
             error.OutOfMemory => @panic("out of memory."),
             else => {}
         };
-        const parent_file: *Ramfs.FileNode = @ptrCast(@alignCast(cur_parent.fs_data));
-        cur_parent.fs_data = parent_file.children.get(part) orelse {
+        const parent_file: *Ramfs.FileNode = @ptrCast(@alignCast(cur_parent.fs_data.ptr));
+        cur_parent.fs_data.ptr = parent_file.children.get(part) orelse {
             @panic("something seriously went wrong with tmpfs implementation.");
         };
     }

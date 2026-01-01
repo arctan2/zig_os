@@ -7,7 +7,7 @@ pub const kglobal = @import("kglobal.zig");
 pub const page_alloc = @import("page_alloc.zig");
 
 pub const kbacking_alloc = @import("kbacking_alloc.zig");
-var gpa_allocator = std.heap.DebugAllocator(.{ .safety = false, .MutexType = atomic.spinlock.SpinLock }) {
+var gpa_allocator = std.heap.DebugAllocator(.{ .safety = false, .MutexType = atomic.SpinLock }) {
     .backing_allocator = kbacking_alloc.allocator
 };
 pub const kalloc = gpa_allocator.allocator();

@@ -1,53 +1,58 @@
 const std = @import("std");
 const uart = @import("uart");
-const _fs = @import("fs");
-const FsOps = _fs.FsOps;
-const FsType = _fs.FsType;
-const Vnode = _fs.Vnode;
-const Dentry = _fs.Dentry;
+const fs = @import("fs");
+const DListNode = @import("utils").types.DListNode;
+const DoubleLinkedListQueue = @import("utils").types.DoubleLinkedListQueue;
 
-const DockPoint = struct {
-    fs_ops: FsOps,
-    fs_ptr: *anyopaque,
-    fs_type: FsType,
-    root_dentry: *Dentry,
+const Mode = enum(u8) {
+    Read = 1 << 0,
+    Write = 1 << 1,
+    _
+};
 
-    pub const HashKey = struct {
-        path: []const u8,
+const File = struct {
+    inode: *fs.Inode,
+    offset: usize,
+    mode: Mode,
+    is_dir: bool,
 
-        const Context = struct {
-            pub fn hash(_: @This(), key: HashKey) u64 {
-                return @as(u64, @intCast(@intFromPtr(key.parent))) + std.hash.Wyhash.hash(0, key.name);
-            }
-
-            pub fn eql(_: @This(), a: HashKey, b: HashKey) bool {
-                return a.parent == b.parent and std.mem.eql(u8, a.name, b.name);
-            }
+    pub fn create(allocator: std.mem.Allocator, inode: *fs.Inode, mode: Mode, is_dir: bool) !*File {
+        const f = try allocator.create(File);
+        f.* = .{
+            .inode = inode,
+            .offset = 0,
+            .mode = mode,
+            .is_dir = is_dir
         };
-    };
+        return f;
+    }
+
+    pub inline fn destory(self: *File, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
-const FileHandle = struct {
-    vnode: *Vnode,
-};
-
-var vnode_cache: std.AutoHashMap(Vnode.HashKey, *Vnode) = undefined;
-var dentry_cache: std.HashMap(Dentry.HashKey, *Dentry, Dentry.HashKey.Context, 80) = undefined;
-var dock_points: std.StringHashMapUnmanaged(*DockPoint) = .empty;
+var lru_inode = DoubleLinkedListQueue(DListNode(*fs.Inode));
+var lru_dentry = DoubleLinkedListQueue(DListNode(*fs.Dentry));
+var inode_cache: std.AutoHashMap(fs.Inode.HashKey, *fs.Inode) = undefined;
+var dentry_cache: std.HashMap(fs.Dentry.HashKey, *fs.Dentry, fs.Dentry.HashKey.Context, 80) = undefined;
+var dock_points: std.StringHashMapUnmanaged(*fs.DockPoint) = .empty;
 
 pub fn init(allocator: std.mem.Allocator) !void {
-    vnode_cache = .init(allocator);
+    inode_cache = .init(allocator);
     dentry_cache = .init(allocator);
 }
 
-pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: FsOps, fs_ptr: *anyopaque, fs_type: FsType) !void {
-    const d = try allocator.create(DockPoint);
+pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: fs.FsOps, fs_ptr: *anyopaque, fs_type: fs.FsType) !void {
+    const d = try allocator.create(fs.DockPoint);
     d.* = .{
         .fs_ops = fs_ops,
         .fs_type = fs_type,
         .fs_ptr = fs_ptr,
         .root_dentry = fs_ops.getRootDentry(fs_ptr),
     };
+
+    d.root_dentry.inode.?.dock_point = d;
 
     if(dock_points.contains(name)) {
         return;
@@ -60,28 +65,63 @@ pub fn undock(allocator: std.mem.Allocator, name: []const u8) anyerror!void {
     const d = dock_points.get(name) orelse return error.NotFound;
     _ = dock_points.remove(name);
     try d.fs_ops.deinit(d.fs_ptr);
-    if(d.root_dentry.vnode) |v| allocator.destroy(v);
+    if(d.root_dentry.inode) |v| allocator.destroy(v);
     allocator.destroy(d.root_dentry);
 }
 
-pub fn open(allocator: std.mem.Allocator, _: []const u8) error{NotFound, OutOfMemory}!*FileHandle {
-    return try allocator.create(FileHandle);
+fn checkCachedOrCreateInode(allocator: std.mem.Allocator, fs_data: fs.FsData, dock_point: *fs.DockPoint) !*fs.Inode {
+    if(inode_cache.get(.{ .dock_point = dock_point, .inode_num = fs_data.inode_num })) |inode| {
+        return inode;
+    }
+    return try fs.Inode.create(allocator, dock_point, fs_data);
 }
 
-// pub fn close(f: *FileHandle) void {
+fn lookupIter(allocator: std.mem.Allocator, path_parts: std.mem.SplitIterator(u8, .sequence), dock_point: *fs.DockPoint) !*fs.Dentry {
+    var parts = path_parts;
+    var cur = dock_point.root_dentry;
+
+    while(parts.next()) |part| {
+        if(dentry_cache.get(.{ .parent = cur, .name = part })) |dentry| {
+            cur = dentry;
+        } else {
+            const fs_data = try dock_point.fs_ops.i_ops.lookup(dock_point.fs_ptr, cur.inode.?, part);
+            const inode = try checkCachedOrCreateInode(allocator, fs_data, dock_point);
+            const dentry = try fs.Dentry.create(allocator, part, cur, inode);
+            inode.dock_point = dock_point;
+            try inode_cache.put(.{ .inode_num = inode.fs_data.inode_num, .dock_point = inode.dock_point }, inode);
+            try dentry_cache.put(.{ .parent = cur, .name = part }, dentry);
+            cur.incRef();
+            cur = dentry;
+        }
+    }
+
+    return cur;
+}
+
+pub fn open(allocator: std.mem.Allocator, path: []const u8, mode: Mode) error{DoesNotExist, OutOfMemory}!*File {
+    var parts = std.mem.splitSequence(u8, path, "/");
+    _ = parts.next();
+    const dock_point_name = parts.next() orelse return error.DoesNotExist;
+    const dock_point = dock_points.get(dock_point_name) orelse return error.DoesNotExist;
+    const dentry = try lookupIter(allocator, parts, dock_point);
+    const file = try File.create(allocator, dentry.inode.?, mode, false);
+    return file;
+}
+
+// pub fn close(f: *File) void {
 // }
 // 
-// pub fn rename(f: *FileHandle, new_name: []const u8) !void {
+// pub fn rename(f: *File, new_name: []const u8) !void {
 // }
 // 
-// pub fn mkdir(f: *FileHandle, path: []const u8) !void {
+// pub fn mkdir(f: *File, path: []const u8) !void {
 // }
 // 
-// pub fn rmdir(f: *FileHandle, path: []const u8) void {
+// pub fn rm(f: *File, path: []const u8) void {
 // }
 // 
-// pub fn read(f: *FileHandle, buf: []u8) !usize {
+// pub fn read(f: *File, buf: []u8) !usize {
 // }
 // 
-// pub fn write(f: *FileHandle, buf: []u8) !usize {
+// pub fn write(f: *File, buf: []u8) !usize {
 // }
