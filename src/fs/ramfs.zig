@@ -160,6 +160,8 @@ pub fn initManaged(allocator: std.mem.Allocator) !*Self {
         },
         .dock_point = null,
         .ref_count = 0,
+        .lock = .{},
+        .lru_node = null,
     };
 
     self.* = .{
@@ -169,6 +171,7 @@ pub fn initManaged(allocator: std.mem.Allocator) !*Self {
             .parent = null,
             .inode = root_inode,
             .ref_count = 0,
+            .lru_node = null,
             .lock = .{}
         },
         .allocator = allocator

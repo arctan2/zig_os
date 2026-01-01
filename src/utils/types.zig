@@ -125,7 +125,7 @@ pub fn DoubleLinkedListQueue(ListNodeType: type) type {
                     self.tail = null;
                 } else {
                     self.head = h.next;
-                    self.head.prev = null;
+                    if(self.head) |head| head.prev = null;
                 }
 
                 return h;

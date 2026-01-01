@@ -1,5 +1,6 @@
 const std = @import("std");
 const SpinLock = @import("atomic").SpinLock;
+const DListNode = @import("utils").types.DListNode;
 pub const InitRamFs = @import("initramfs.zig");
 
 pub const DockPoint = struct {
@@ -15,6 +16,7 @@ pub const Dentry = struct {
     inode: ?*Inode,
     ref_count: usize,
     lock: SpinLock,
+    lru_node: ?*DListNode(*Dentry, "lru_node"),
 
     pub fn create(allocator: std.mem.Allocator, name: []const u8, parent: ?*Dentry, inode: ?*Inode) !*Dentry {
         const dentry = try allocator.create(Dentry);
@@ -22,8 +24,9 @@ pub const Dentry = struct {
             .name = try allocator.dupe(u8, name),
             .parent = parent,
             .inode = inode,
-            .ref_count = 1,
-            .lock = .{}
+            .ref_count = 0,
+            .lock = .{},
+            .lru_node = null,
         };
         return dentry;
     }
@@ -33,13 +36,13 @@ pub const Dentry = struct {
         allocator.destroy(self);
     }
 
-    pub fn incRef(self: *Dentry) void {
+    pub fn incRefAtomic(self: *Dentry) void {
         self.lock.lock();
         defer self.lock.unlock();
         self.ref_count += 1;
     }
 
-    pub fn decRef(self: *Dentry) void {
+    pub fn decRefAtomic(self: *Dentry) void {
         self.lock.lock();
         defer self.lock.unlock();
         if(self.ref_count > 0) self.ref_count -= 1;
@@ -70,6 +73,8 @@ pub const Inode = struct {
     fs_data: FsData,
     dock_point: ?*DockPoint,
     ref_count: usize,
+    lock: SpinLock,
+    lru_node: ?*DListNode(*Inode, "lru_node"),
 
     pub const HashKey = struct {
         dock_point: ?*DockPoint,
@@ -81,9 +86,23 @@ pub const Inode = struct {
         inode.* = .{
             .fs_data = fs_data,
             .dock_point = dock_point,
-            .ref_count = 1,
+            .ref_count = 0,
+            .lock = .{},
+            .lru_node = null
         };
         return inode;
+    }
+
+    pub fn incRefAtomic(self: *Inode) void {
+        self.lock.lock();
+        defer self.lock.unlock();
+        self.ref_count += 1;
+    }
+
+    pub fn decRefAtomic(self: *Inode) void {
+        self.lock.lock();
+        defer self.lock.unlock();
+        if(self.ref_count > 0) self.ref_count -= 1;
     }
 
     pub inline fn destroy(self: *Inode, allocator: std.mem.Allocator) void {
@@ -114,7 +133,7 @@ pub const INodeOps = struct {
 
 pub const FileOps = struct {
     read: *const fn(ptr: *anyopaque, inode: *Inode, offset: usize, buf: []u8) usize,
-    write: *const fn(ptr: *anyopaque, inode: *Inode, offset: usize, buf: []u8) usize,
+    write: *const fn(ptr: *anyopaque, inode: *Inode, offset: usize, buf: []const u8) usize,
 };
 
 pub const FsOps = struct {

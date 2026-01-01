@@ -12,6 +12,8 @@ fn insertToRamfs(ramfs: *Ramfs, entry: *const cpio.Entry, filename: []const u8) 
         .fs_data = ramfs.root_dentry.inode.?.fs_data,
         .dock_point = null,
         .ref_count = 0,
+        .lock = .{},
+        .lru_node = null
     };
 
     while(parts.next()) |part| {

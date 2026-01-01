@@ -29,7 +29,7 @@ fn initProcess() void {
     const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .Read) catch {
         @panic("init not found.");
     };
-    uart.print("f = {x}\n", .{f.*});
+    uart.print("f = {}\n", .{f.*});
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
