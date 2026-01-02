@@ -228,7 +228,17 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
             }
             putc(']');
         },
+        .error_set => |error_set| {
+            puts("Error(");
+            if(error_set) |err_set| {
+                inline for(err_set) |e| {
+                    printInternal("c", 0, end, 0, .{e});
+                }
+            }
+            putc(')');
+        },
         else => {
+            @compileLog(arg);
             @compileError("print not implemented for that type");
         }
     }

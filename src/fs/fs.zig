@@ -3,6 +3,8 @@ const SpinLock = @import("atomic").SpinLock;
 const DListNode = @import("utils").types.DListNode;
 pub const InitRamFs = @import("initramfs.zig");
 
+pub const MAX_FILE_NAME_LEN = 255;
+
 pub const DockPoint = struct {
     fs_ops: FsOps,
     fs_ptr: *anyopaque,
@@ -11,7 +13,7 @@ pub const DockPoint = struct {
 };
 
 pub const Dentry = struct {
-    name: []const u8,
+    name: []u8,
     parent: ?*Dentry,
     inode: ?*Inode,
     ref_count: usize,
@@ -19,6 +21,9 @@ pub const Dentry = struct {
     lru_node: ?*DListNode(*Dentry, "lru_node"),
 
     pub fn create(allocator: std.mem.Allocator, name: []const u8, parent: ?*Dentry, inode: ?*Inode) !*Dentry {
+        if(name.len > MAX_FILE_NAME_LEN) {
+            return error.InvalidFileName;
+        }
         const dentry = try allocator.create(Dentry);
         dentry.* = .{
             .name = try allocator.dupe(u8, name),
@@ -110,7 +115,6 @@ pub const Inode = struct {
     }
 };
 
-
 pub const File = struct {
     pub const Mode = packed struct {
         read: u1 = 1,
@@ -140,9 +144,9 @@ pub const File = struct {
 };
 
 pub const Modes = packed struct {
-    is_dir: u1,
-    w: u1,
-    x: u1
+    is_dir: u1 = 0,
+    w: u1 = 1,
+    x: u1 = 0
 };
 
 pub const Stat = struct {
@@ -165,12 +169,12 @@ pub const INodeOpsError = error {
 };
 
 const LookupError = error{ OutOfMemory, DoesNotExist };
-const CreateError = error{ OutOfMemory, AlreadyExist };
+const CreateError = error{ OutOfMemory, AlreadyExist, InvalidFileName };
 const DestroyError = error{} || LookupError;
 const ResizeError = error{OutOfMemory, IsDir};
-const RenameError = error{} || LookupError;
-const ReadError = error{ IsDir };
-const WriteError = error{ IsDir, ReadOnly } || ResizeError;
+const RenameError = error{} || LookupError || CreateError;
+const ReadError = error{ IsDir, EOF };
+const WriteError = error{ IsDir, NoWrite } || ResizeError;
 
 pub const INodeOps = struct {
     lookup: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) LookupError!FsData,

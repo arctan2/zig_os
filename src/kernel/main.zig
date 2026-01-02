@@ -26,22 +26,57 @@ pub const os = struct {
 };
 
 fn initProcess() void {
-    const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .{}) catch {
+    vfs.mkdir(mm.kalloc, "/initramfs/bin/cool_bins") catch @panic("cannot mkdir cool_bins");
+
+    const f = vfs.open(mm.kalloc, "/initramfs/bin/cool_bins/init", .{.create = 1, .write = 1}) catch {
         @panic("init not found.");
     };
-    const stat = vfs.stat(f) catch @panic("invalid file");
+    defer vfs.close(mm.kalloc, f);
+    {
+        const stat = vfs.stat(f) catch @panic("invalid file");
+        uart.print("stat = {c}\n", .{stat});
+    }
 
-    const f2 = vfs.open(mm.kalloc, "/initramfs/bin", .{}) catch {
-        @panic("init not found.");
+    const written = vfs.write(f, "cool af data") catch @panic("error while writing to file");
+    uart.print("written = {}\n", .{written});
+
+    f.offset = 0;
+
+    {
+        const stat = vfs.stat(f) catch @panic("invalid file");
+        uart.print("stat = {c}\n", .{stat});
+    }
+
+    const written_again = vfs.write(f, "cool af data more more more more more more more data not a factor of 8") catch {
+        @panic("error while writing to file");
     };
-    const stat2 = vfs.stat(f2) catch @panic("invalid file");
-    uart.print("init stat = {c}\n", .{stat});
-    uart.print("bin stat = {c}\n", .{stat2});
-    var a = [_]u8{'a', 'b'};
+    uart.print("written_again = {}\n", .{written_again});
 
-    // const wrote = vfs.write(f2, "") catch @panic("cannot write to dir");
-    const read = vfs.read(f2, &a) catch @panic("cannot read from dir file");
-    uart.print("read = {}\n", .{read});
+    f.offset = 0;
+
+    while(true) {
+        var buf = [_]u8{0} ** 8;
+        const read = vfs.read(f, &buf) catch |e| switch(e) {
+            error.EOF => break,
+            else => @panic("error while writing to file")
+        };
+        uart.print("read = {}\n", .{read});
+        uart.print("buf = {c}\n", .{buf});
+    }
+
+    vfs.rename(mm.kalloc, f, "a") catch |e| {
+        uart.print("{}\n", .{e});
+        switch(e) {
+            error.OutOfMemory => @panic("outof mem"),
+            error.DoesNotExist => @panic("no exist"),
+            error.AlreadyExist => @panic("already exist"),
+            else => @panic("rename failed")
+        }
+    };
+    {
+        const stat = vfs.stat(f) catch @panic("invalid file");
+        uart.print("stat = {c}\n", .{stat});
+    }
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {

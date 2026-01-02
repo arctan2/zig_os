@@ -38,3 +38,11 @@ pub fn write8(reg: u32, val: u8) void {
     @as(*volatile u8, @ptrFromInt(reg)).* = val;
 }
 
+pub fn isStringNameEmpty(str: []const u8) bool {
+    for(str) |c| {
+        if(c != ' ' or c != 0 or c != '\t' or c != '\n') {
+            return false;
+        }
+    }
+    return true;
+}

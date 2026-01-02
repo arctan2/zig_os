@@ -1,6 +1,7 @@
 const std = @import("std");
 const fs = @import("fs.zig");
 const uart = @import("uart");
+const utils = @import("utils");
 
 pub const FileNode = struct {
     data: ?[]u8 = null,
@@ -39,9 +40,15 @@ fn lookup(_: *anyopaque, parent: *fs.Inode, name: []const u8) !fs.FsData {
 fn create(ptr: *anyopaque, parent: *fs.Inode, name: []const u8, modes: fs.Modes) !void {
     const self: *Self = @ptrCast(@alignCast(ptr));
     const parent_file: *FileNode  = @ptrCast(@alignCast(parent.fs_data.ptr));
+
+    if(name.len > fs.MAX_FILE_NAME_LEN or utils.isStringNameEmpty(name)) {
+        return error.InvalidFileName;
+    }
+
     if(parent_file.children.contains(name)) {
         return error.AlreadyExist;
     }
+
     const file = try FileNode.init(self.allocator, self.getNextInodeNum(), modes);
     try parent_file.children.put(self.allocator, name, file);
 }
@@ -75,10 +82,21 @@ fn resize(ptr: *anyopaque, inode: *fs.Inode, len: usize) !void {
 fn rename(ptr: *anyopaque, parent: *fs.Inode, old: []const u8, new: []const u8) !void {
     const self: *Self = @ptrCast(@alignCast(ptr));
     const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
+
+    if(new.len > fs.MAX_FILE_NAME_LEN or utils.isStringNameEmpty(new)) {
+        return error.InvalidFileName;
+    }
+
+    if(parent_file.children.contains(new)) {
+        return error.AlreadyExist;
+    }
+
     if(parent_file.children.get(old)) |child| {
         _ = parent_file.children.remove(old);
         try parent_file.children.put(self.allocator, new, child);
+        return;
     }
+
     return error.DoesNotExist;
 }
 
@@ -109,7 +127,11 @@ fn read(_: *anyopaque, inode: *fs.Inode, offset: usize, buf: []u8) !usize {
     if(file.data) |data| {
         const end = @min(offset + buf.len, data.len);
         const count = end - offset;
-        @memcpy(buf, data[offset..end]);
+
+        if(count == 0) return error.EOF;
+
+        uart.print("offset = {}, end = {}, count = {}\n", .{offset, end, count});
+        @memcpy(buf[0..count], data[offset..end]);
         return count;
     }
     return 0;
@@ -123,7 +145,7 @@ fn write(ptr: *anyopaque, inode: *fs.Inode, offset: usize, buf: []const u8) !usi
     }
 
     if(file.modes.w == 0) {
-        return error.ReadOnly;
+        return error.NoWrite;
     }
 
     const end = offset + buf.len;
@@ -141,7 +163,7 @@ fn write(ptr: *anyopaque, inode: *fs.Inode, offset: usize, buf: []const u8) !usi
 }
 
 fn iterativeDestroyFileNode(allocator: std.mem.Allocator, root_file: *FileNode) !void {
-    var stack = try std.ArrayList(*FileNode).initCapacity(allocator, 32);
+    var stack = try std.ArrayList(*FileNode).initCapacity(allocator, root_file.children.size);
     defer stack.deinit(allocator);
 
     try stack.append(allocator, root_file);
