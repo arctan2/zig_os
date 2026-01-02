@@ -4,37 +4,6 @@ const fs = @import("fs");
 const DListNode = @import("utils").types.DListNode;
 const DoubleLinkedListQueue = @import("utils").types.DoubleLinkedListQueue;
 
-const Mode = enum(u8) {
-    Read = 1 << 0,
-    Write = 1 << 1,
-    Create = 1 << 2,
-    _
-};
-
-const File = struct {
-    dentry: *fs.Dentry,
-    offset: usize,
-    mode: Mode,
-    is_dir: bool,
-
-    pub fn create(allocator: std.mem.Allocator, dentry: *fs.Dentry, mode: Mode, is_dir: bool) !*File {
-        const f = try allocator.create(File);
-        dentry.incRefAtomic();
-        f.* = .{
-            .dentry = dentry,
-            .offset = 0,
-            .mode = mode,
-            .is_dir = is_dir
-        };
-        return f;
-    }
-
-    pub inline fn destory(self: *File, allocator: std.mem.Allocator) void {
-        self.dentry.decRefAtomic();
-        allocator.destroy(self);
-    }
-};
-
 var lru_inode: DoubleLinkedListQueue(DListNode(*fs.Inode, "lru_node")) = .default();
 var lru_dentry: DoubleLinkedListQueue(DListNode(*fs.Dentry, "lru_node")) = .default();
 var inode_cache: std.AutoHashMap(fs.Inode.HashKey, *fs.Inode) = undefined;
@@ -64,7 +33,7 @@ pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: fs.FsOps, fs
     try dock_points.put(allocator, name, d);
 }
 
-pub fn undock(allocator: std.mem.Allocator, name: []const u8) anyerror!void {
+pub fn undock(allocator: std.mem.Allocator, name: []const u8) !void {
     const d = dock_points.get(name) orelse return error.NotFound;
     _ = dock_points.remove(name);
     try d.fs_ops.deinit(d.fs_ptr);
@@ -113,17 +82,17 @@ fn lookupIter(allocator: std.mem.Allocator, path_parts: std.mem.SplitIterator(u8
     return cur;
 }
 
-pub fn open(allocator: std.mem.Allocator, path: []const u8, mode: Mode) error{DoesNotExist, OutOfMemory}!*File {
+pub fn open(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode) !*fs.File {
     var parts = std.mem.splitSequence(u8, path, "/");
     _ = parts.next();
     const dock_point_name = parts.next() orelse return error.DoesNotExist;
     const dock_point = dock_points.get(dock_point_name) orelse return error.DoesNotExist;
     const dentry = try lookupIter(allocator, parts, dock_point);
-    const file = try File.create(allocator, dentry, mode, false);
+    const file = try fs.File.create(allocator, dentry, mode);
     return file;
 }
 
-pub fn close(allocator: std.mem.Allocator, f: *File) void {
+pub fn close(allocator: std.mem.Allocator, f: *fs.File) void {
     f.destory(allocator);
 }
 
@@ -136,16 +105,23 @@ pub fn close(allocator: std.mem.Allocator, f: *File) void {
 // pub fn rm(f: *File, path: []const u8) void {
 // }
 // 
-pub fn read(f: *File, buf: []u8) usize {
+pub fn read(f: *fs.File, buf: []u8) !usize {
     const dentry = f.dentry;
-    const inode = dentry.inode orelse return 0;
-    const dock_point = inode.dock_point orelse return 0;
-    return dock_point.fs_ops.f_ops.read(dock_point.fs_ptr, inode, f.offset, buf);
+    const inode = dentry.inode orelse return error.InvalidFile;
+    const dock_point = inode.dock_point orelse return error.InvalidFile;
+    return try dock_point.fs_ops.f_ops.read(dock_point.fs_ptr, inode, f.offset, buf);
 }
 
-pub fn write(f: *File, buf: []const u8) usize {
+pub fn write(f: *fs.File, buf: []const u8) !usize {
     const dentry = f.dentry;
-    const inode = dentry.inode orelse return 0;
-    const dock_point = inode.dock_point orelse return 0;
-    return dock_point.fs_ops.f_ops.write(dock_point.fs_ptr, inode, f.offset, buf);
+    const inode = dentry.inode orelse return error.InvalidFile;
+    const dock_point = inode.dock_point orelse return error.InvalidFile;
+    return try dock_point.fs_ops.f_ops.write(dock_point.fs_ptr, inode, f.offset, buf);
+}
+
+pub fn stat(f: *fs.File) !fs.Stat {
+    const dentry = f.dentry;
+    const inode = dentry.inode orelse return error.InvalidFile;
+    const dock_point = inode.dock_point orelse return error.InvalidFile;
+    return dock_point.fs_ops.i_ops.stat(dock_point.fs_ptr, inode, dentry.name);
 }

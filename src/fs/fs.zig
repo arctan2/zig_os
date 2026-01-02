@@ -110,6 +110,47 @@ pub const Inode = struct {
     }
 };
 
+
+pub const File = struct {
+    pub const Mode = packed struct {
+        read: u1 = 1,
+        write: u1 = 0,
+        create: u1 = 0,
+    };
+
+    dentry: *Dentry,
+    offset: usize,
+    mode: Mode,
+
+    pub fn create(allocator: std.mem.Allocator, dentry: *Dentry, mode: Mode) !*File {
+        const f = try allocator.create(File);
+        dentry.incRefAtomic();
+        f.* = .{
+            .dentry = dentry,
+            .offset = 0,
+            .mode = mode,
+        };
+        return f;
+    }
+
+    pub inline fn destory(self: *File, allocator: std.mem.Allocator) void {
+        self.dentry.decRefAtomic();
+        allocator.destroy(self);
+    }
+};
+
+pub const Modes = packed struct {
+    is_dir: u1,
+    w: u1,
+    x: u1
+};
+
+pub const Stat = struct {
+    name: []const u8,
+    size: usize,
+    modes: Modes
+};
+
 pub const FsType = enum(u8) {
     Device,
     Network,
@@ -123,17 +164,26 @@ pub const INodeOpsError = error {
     DoesNotExist
 };
 
+const LookupError = error{ OutOfMemory, DoesNotExist };
+const CreateError = error{ OutOfMemory, AlreadyExist };
+const DestroyError = error{} || LookupError;
+const ResizeError = error{OutOfMemory, IsDir};
+const RenameError = error{} || LookupError;
+const ReadError = error{ IsDir };
+const WriteError = error{ IsDir, ReadOnly } || ResizeError;
+
 pub const INodeOps = struct {
-    lookup: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) error{OutOfMemory, DoesNotExist}!FsData,
-    create: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) INodeOpsError!void,
-    destroy: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) error{DoesNotExist, OutOfMemory}!void,
-    resize: *const fn(ptr: *anyopaque, inode: *Inode, len: usize) error{OutOfMemory}!void,
-    rename: *const fn(ptr: *anyopaque, parent: *Inode, old: []const u8, new: []const u8) INodeOpsError!void,
+    lookup: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) LookupError!FsData,
+    create: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8, modes: Modes) CreateError!void,
+    destroy: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) DestroyError!void,
+    resize: *const fn(ptr: *anyopaque, inode: *Inode, len: usize) ResizeError!void,
+    rename: *const fn(ptr: *anyopaque, parent: *Inode, old: []const u8, new: []const u8) RenameError!void,
+    stat: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) Stat,
 };
 
 pub const FileOps = struct {
-    read: *const fn(ptr: *anyopaque, inode: *Inode, offset: usize, buf: []u8) usize,
-    write: *const fn(ptr: *anyopaque, inode: *Inode, offset: usize, buf: []const u8) usize,
+    read: *const fn(ptr: *anyopaque, inode: *Inode, offset: usize, buf: []u8) ReadError!usize,
+    write: *const fn(ptr: *anyopaque, inode: *Inode, offset: usize, buf: []const u8) WriteError!usize,
 };
 
 pub const FsOps = struct {

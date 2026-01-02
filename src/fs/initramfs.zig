@@ -16,19 +16,32 @@ fn insertToRamfs(ramfs: *Ramfs, entry: *const cpio.Entry, filename: []const u8) 
         .lru_node = null
     };
 
+    const mode_int = cpio.toU64(&entry.header.mode) catch return;
+    const is_dir: u1 = if((mode_int & @as(u64, 0xF000)) == 0x4000) 1 else 0;
+
     while(parts.next()) |part| {
-        Ramfs.fs_ops.i_ops.create(ramfs, &cur_parent, part) catch |e| switch (e) {
-            error.OutOfMemory => @panic("out of memory."),
-            else => {}
-        };
+        if(parts.peek() == null) {
+            Ramfs.fs_ops.i_ops.create(ramfs, &cur_parent, part, .{ .is_dir = is_dir, .w = 1, .x = 0 }) catch |e| switch (e) {
+                error.OutOfMemory => @panic("out of memory."),
+                else => {}
+            };
+        } else {
+            Ramfs.fs_ops.i_ops.create(ramfs, &cur_parent, part, .{ .is_dir = 1, .w = 1, .x = 0 }) catch |e| switch (e) {
+                error.OutOfMemory => @panic("out of memory."),
+                else => {}
+            };
+        }
         const parent_file: *Ramfs.FileNode = @ptrCast(@alignCast(cur_parent.fs_data.ptr));
         cur_parent.fs_data.ptr = parent_file.children.get(part) orelse {
             @panic("something seriously went wrong with tmpfs implementation.");
         };
     }
 
-    if(entry.data.len != Ramfs.fs_ops.f_ops.write(ramfs, &cur_parent, 0, @constCast(entry.data))) {
-        @panic("out of memory");
+    if(is_dir == 0) {
+        const written = Ramfs.fs_ops.f_ops.write(ramfs, &cur_parent, 0, @constCast(entry.data)) catch @panic("cannot write");
+        if(entry.data.len != written) {
+            @panic("out of memory");
+        }
     }
 }
 

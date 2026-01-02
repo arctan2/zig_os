@@ -26,10 +26,22 @@ pub const os = struct {
 };
 
 fn initProcess() void {
-    const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .Read) catch {
+    const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .{}) catch {
         @panic("init not found.");
     };
-    uart.print("f = {}\n", .{f.*});
+    const stat = vfs.stat(f) catch @panic("invalid file");
+
+    const f2 = vfs.open(mm.kalloc, "/initramfs/bin", .{}) catch {
+        @panic("init not found.");
+    };
+    const stat2 = vfs.stat(f2) catch @panic("invalid file");
+    uart.print("init stat = {c}\n", .{stat});
+    uart.print("bin stat = {c}\n", .{stat2});
+    var a = [_]u8{'a', 'b'};
+
+    // const wrote = vfs.write(f2, "") catch @panic("cannot write to dir");
+    const read = vfs.read(f2, &a) catch @panic("cannot read from dir file");
+    uart.print("read = {}\n", .{read});
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {

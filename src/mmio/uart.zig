@@ -152,7 +152,16 @@ fn printInternal(comptime fmt: []const u8, comptime begin: usize, comptime end: 
                     putHex(usize, @intCast(arg));
                 },
                 'c' => {
-                    putc(arg);
+                    // very hacky way to support bit fields
+                    if(arg < 255) {
+                        if(arg == 1 or arg == 0) {
+                            putInt(usize, arg);
+                        } else {
+                            putc(@intCast(arg));
+                        }
+                    } else {
+                        putInt(usize, @intCast(arg));
+                    } 
                 },
                 'b' => {
                     putBin(usize, @intCast(arg));

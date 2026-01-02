@@ -16,22 +16,10 @@ pub const CpioNewcHeader = struct {
     rdevminor: [8]u8,
     namesize: [8]u8,
     check: [8]u8,
-
 };
 
-pub fn toU64(field: *const [8]u8) u64 {
-    var i: u64 = 1;
-    var val: u64 = 0;
-    var idx: i8 = 7;
-
-    while(idx >= 0) : (idx -= 1) {
-        var c: u8 = field[@intCast(idx)];
-        c = if(c >= 'A') (c - 'A') + 10 else (c - '0');
-        val += c * i;
-        i *= 16;
-    }
-
-    return val;
+pub fn toU64(field: *const [8]u8) !u64 {
+    return try std.fmt.parseInt(u64, field, 16);
 }
 
 pub const Entry = struct {
@@ -57,8 +45,8 @@ pub const CpioIterator = struct {
 
         if(!std.mem.eql(u8, &header.magic, "070701")) return null;
 
-        const name_size = toU64(&header.namesize);
-        const file_size = toU64(&header.filesize);
+        const name_size = toU64(&header.namesize) catch return null;
+        const file_size = toU64(&header.filesize) catch return null;
 
         const name_off: usize = @intCast(self.cur_offset + @sizeOf(CpioNewcHeader));
         const data_off: usize = std.mem.alignForward(usize, name_off + @as(usize, @intCast(name_size)), 4);
