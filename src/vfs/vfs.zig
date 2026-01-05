@@ -2,10 +2,10 @@ const std = @import("std");
 const uart = @import("uart");
 const fs = @import("fs");
 const DListNode = @import("utils").types.DListNode;
-const DoubleLinkedListQueue = @import("utils").types.DoubleLinkedListQueue;
+const DoubleLinkedList = @import("utils").types.DoubleLinkedList;
 
-var lru_inode: DoubleLinkedListQueue(DListNode(*fs.Inode, "lru_node")) = .default();
-var lru_dentry: DoubleLinkedListQueue(DListNode(*fs.Dentry, "lru_node")) = .default();
+var lru_inode: DoubleLinkedList(DListNode(*fs.Inode, "lru_node")) = .{};
+var lru_dentry: DoubleLinkedList(DListNode(*fs.Dentry, "lru_node")) = .{};
 var inode_cache: std.AutoHashMap(fs.Inode.HashKey, *fs.Inode) = undefined;
 var dentry_cache: std.HashMap(fs.Dentry.HashKey, *fs.Dentry, fs.Dentry.HashKey.Context, 80) = undefined;
 var dock_points: std.StringHashMapUnmanaged(*fs.DockPoint) = .empty;
@@ -46,8 +46,7 @@ fn checkCachedOrCreateInode(allocator: std.mem.Allocator, fs_data: fs.FsData, do
         if(inode.lru_node) |lru| {
             inode.lock.lock();
             defer inode.lock.unlock();
-            lru_inode.remove(lru);
-            allocator.destroy(lru);
+            lru_inode.remove(@constCast(&lru));
             inode.lru_node = null;
         }
         return inode;
@@ -55,15 +54,21 @@ fn checkCachedOrCreateInode(allocator: std.mem.Allocator, fs_data: fs.FsData, do
     return try fs.Inode.create(allocator, dock_point, fs_data);
 }
 
-fn createCachedDentry(
+fn createCachedDentryIfNotExist(
     allocator: std.mem.Allocator,
     fs_data: fs.FsData,
     dock_point: *fs.DockPoint,
     name: []const u8,
     parent: *fs.Dentry
 ) !*fs.Dentry {
+    if(dentry_cache.get(.{ .parent = parent, .name = name })) |dentry| {
+        return dentry;
+    }
+
     const inode = try checkCachedOrCreateInode(allocator, fs_data, dock_point);
     const dentry = try fs.Dentry.create(allocator, name, parent, inode);
+
+    parent.addChild(dentry);
 
     inode.dock_point = dock_point;
     inode.incRefAtomic();
@@ -71,15 +76,38 @@ fn createCachedDentry(
     try inode_cache.put(.{ .inode_num = inode.fs_data.inode_num, .dock_point = inode.dock_point }, inode);
     try dentry_cache.put(.{ .parent = parent, .name = name }, dentry);
 
-    parent.incRefAtomic();
-
     return dentry;
 }
 
-// doesn't increment the last dentry's ref_count, it only increments parent dentry's ref_count when it creates child dentry
-// it doesn't go to last entry in the path_names
-// so it just returns the (last - 1)th name dentry + the last name
-// Example: `/dock_pt_name/dir/file` -> `dir`'s dentry + `file`
+fn unlinkDentry(dentry: *fs.Dentry) !void {
+    const parent = dentry.parent orelse return;
+    const pinode = parent.inode orelse return;
+    const inode = dentry.inode orelse return;
+    const dock_point = inode.dock_point orelse return;
+    try dock_point.fs_ops.i_ops.unlink(dock_point.fs_ptr, pinode, dentry.name);
+    _ = dentry_cache.remove(.{ .parent = parent, .name = dentry.name });
+}
+
+fn dentryDestroyIterative(allocator: std.mem.Allocator, dentry: *fs.Dentry) !void {
+    var cur = dentry;
+    cur.lock.lock();
+    cur.ref_count -= 1;
+    
+    while(cur.ref_count == 0) {
+        cur.lock.unlock();
+        const next_parent = cur.parent;
+        cur.destroy(allocator);
+        cur = next_parent orelse return;
+        cur.lock.lock();
+        cur.ref_count -= 1;
+    }
+    cur.lock.unlock();
+}
+
+// doesn't increment the any dentry's ref_count, it only increments parent dentry's ref_count when it creates child dentry
+// it consume the last entry in the path_names
+// but it just returns the { (last - 1)th name dentry, the last name }
+// Example: `/dock_pt_name/dir/file` -> { `dir`'s dentry, `file` }
 fn lookupIter(
     allocator: std.mem.Allocator,
     path_names: *std.mem.SplitIterator(u8, .sequence),
@@ -96,14 +124,14 @@ fn lookupIter(
             cur = dentry;
         } else {
             const fs_data = try dock_point.fs_ops.i_ops.lookup(dock_point.fs_ptr, cur.inode.?, name);
-            cur = try createCachedDentry(allocator, fs_data, dock_point, name, cur);
+            cur = try createCachedDentryIfNotExist(allocator, fs_data, dock_point, name, cur);
         }
     }
 
     return .{cur, null};
 }
 
-pub fn open(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode) !*fs.File {
+fn openDentry(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode) !*fs.Dentry {
     var names = std.mem.splitSequence(u8, path, "/");
     _ = names.next();
     const dock_point_name = names.next() orelse return error.DoesNotExist;
@@ -129,14 +157,20 @@ pub fn open(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode) 
                 else => return e
             }
         };
-        const dentry = try createCachedDentry(allocator, fs_data, dock_point, name, last_dir_dentry);
-        return fs.File.create(allocator, dentry, mode);
+        return try createCachedDentryIfNotExist(allocator, fs_data, dock_point, name, last_dir_dentry);
     }
     return error.DoesNotExist;
 }
 
+pub fn open(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode) !*fs.File {
+    const dentry = try openDentry(allocator, path, mode);
+    return fs.File.create(allocator, dentry, mode);
+}
+
 pub fn close(allocator: std.mem.Allocator, f: *fs.File) void {
     f.destory(allocator);
+    // TODO: Check if the file's Dentry is unlinked and remove the file if ref_count is 0
+    // TODO: If the Dentry.ref_count is 0 and has parent then move to lru_dentry if ref_count is 0
 }
 
 pub fn rename(allocator: std.mem.Allocator, f: *fs.File, new_name: []const u8) !void {
@@ -174,7 +208,7 @@ pub fn mkdir(allocator: std.mem.Allocator, path: []const u8) !void {
                 error.DoesNotExist => {
                     try i_ops.create(dock_point.fs_ptr, last_dir_dentry.inode.?, name, .{ .is_dir = 1 });
                     const fs_data = try i_ops.lookup(fs_ptr, parent_inode, name);
-                    _ = try createCachedDentry(allocator, fs_data, dock_point, name, last_dir_dentry);
+                    _ = try createCachedDentryIfNotExist(allocator, fs_data, dock_point, name, last_dir_dentry);
                     return;
                 },
                 else => return e
@@ -185,9 +219,15 @@ pub fn mkdir(allocator: std.mem.Allocator, path: []const u8) !void {
     return error.DoesNotExist;
 }
 
-// pub fn rm(f: *File, path: []const u8) void {
-// }
-// 
+pub fn rm(allocator: std.mem.Allocator, path: []const u8) !void {
+    const dentry = try openDentry(allocator, path, .{ .create = 0, .read = 0, .write = 0 });
+    if(try dentry.isDir()) {
+        @panic("have to handle dir rm");
+    }
+    try unlinkDentry(dentry);
+    try dentryDestroyIterative(allocator, dentry);
+}
+
 // pub fn mv(f: *File, path: []const u8) void {
 // }
 
@@ -220,8 +260,5 @@ pub fn write(f: *fs.File, buf: []const u8) !usize {
 }
 
 pub fn stat(f: *fs.File) !fs.Stat {
-    const dentry = f.dentry;
-    const inode = dentry.inode orelse return error.InvalidFile;
-    const dock_point = inode.dock_point orelse return error.InvalidFile;
-    return dock_point.fs_ops.i_ops.stat(dock_point.fs_ptr, inode, dentry.name);
+    return try f.dentry.stat();
 }

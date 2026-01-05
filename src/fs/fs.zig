@@ -1,6 +1,8 @@
 const std = @import("std");
 const SpinLock = @import("atomic").SpinLock;
-const DListNode = @import("utils").types.DListNode;
+const utils = @import("utils");
+const DListNode = utils.types.DListNode;
+const DoubleLinkedList = utils.types.DoubleLinkedList;
 pub const InitRamFs = @import("initramfs.zig");
 
 pub const MAX_FILE_NAME_LEN = 255;
@@ -12,13 +14,18 @@ pub const DockPoint = struct {
     root_dentry: *Dentry,
 };
 
+const DListNodeDentry = DListNode(*Dentry, "sibling_node");
+const DListNodeInode = DListNode(*Inode, "lru_node");
+
 pub const Dentry = struct {
     name: []u8,
-    parent: ?*Dentry,
-    inode: ?*Inode,
-    ref_count: usize,
-    lock: SpinLock,
-    lru_node: ?*DListNode(*Dentry, "lru_node"),
+    parent: ?*Dentry = null,
+    sibling_node: DListNodeDentry = .{},
+    children: DoubleLinkedList(DListNodeDentry) = .{},
+    inode: ?*Inode = null,
+    ref_count: usize = 0,
+    lock: SpinLock = .{},
+    lru_node: ?DListNodeDentry = null,
 
     pub fn create(allocator: std.mem.Allocator, name: []const u8, parent: ?*Dentry, inode: ?*Inode) !*Dentry {
         if(name.len > MAX_FILE_NAME_LEN) {
@@ -29,14 +36,11 @@ pub const Dentry = struct {
             .name = try allocator.dupe(u8, name),
             .parent = parent,
             .inode = inode,
-            .ref_count = 0,
-            .lock = .{},
-            .lru_node = null,
         };
         return dentry;
     }
 
-    pub fn destroy(self: *Dentry, allocator: std.mem.Allocator) void {
+    pub inline fn destroy(self: *Dentry, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
         allocator.destroy(self);
     }
@@ -53,13 +57,41 @@ pub const Dentry = struct {
         if(self.ref_count > 0) self.ref_count -= 1;
     }
 
+    pub fn addChild(self: *Dentry, child: *Dentry) void {
+        self.lock.lock();
+        defer self.lock.unlock();
+        self.ref_count += 1;
+        self.children.push(&child.sibling_node);
+    }
+
+    pub fn removeChild(self: *Dentry, child: *Dentry) void {
+        self.lock.lock();
+        defer self.lock.unlock();
+        if(self.ref_count > 0) self.ref_count -= 1;
+        self.children.remove(&child.sibling_node);
+    }
+
+    pub fn stat(self: *Dentry) !Stat {
+        const inode = self.inode orelse return error.InvalidFile;
+        const dock_point = inode.dock_point orelse return error.InvalidFile;
+        return dock_point.fs_ops.i_ops.stat(dock_point.fs_ptr, inode, self.name);
+    }
+
+    pub inline fn isDir(self: *Dentry) !bool {
+        return (try self.stat()).modes.is_dir == 1;
+    }
+
     pub const HashKey = struct {
         name: []const u8,
-        parent: *Dentry,
+        parent: ?*Dentry,
 
         pub const Context = struct {
             pub fn hash(_: @This(), key: HashKey) u64 {
-                return @as(u64, @intCast(@intFromPtr(key.parent))) + std.hash.Wyhash.hash(0, key.name);
+                if(key.parent) |parent| {
+                    return @as(u64, @intCast(@intFromPtr(parent))) + std.hash.Wyhash.hash(0, key.name);
+                } else {
+                    return std.hash.Wyhash.hash(0, key.name);
+                }
             }
 
             pub fn eql(_: @This(), a: HashKey, b: HashKey) bool {
@@ -79,7 +111,7 @@ pub const Inode = struct {
     dock_point: ?*DockPoint,
     ref_count: usize,
     lock: SpinLock,
-    lru_node: ?*DListNode(*Inode, "lru_node"),
+    lru_node: ?DListNodeInode,
 
     pub const HashKey = struct {
         dock_point: ?*DockPoint,
@@ -138,7 +170,6 @@ pub const File = struct {
     }
 
     pub inline fn destory(self: *File, allocator: std.mem.Allocator) void {
-        self.dentry.decRefAtomic();
         allocator.destroy(self);
     }
 };
@@ -169,8 +200,9 @@ pub const INodeOpsError = error {
 };
 
 const LookupError = error{ OutOfMemory, DoesNotExist };
+const UnlinkError = error{} || LookupError;
 const CreateError = error{ OutOfMemory, AlreadyExist, InvalidFileName };
-const DestroyError = error{} || LookupError;
+const DestroyError = error{ OutOfMemory };
 const ResizeError = error{OutOfMemory, IsDir};
 const RenameError = error{} || LookupError || CreateError;
 const ReadError = error{ IsDir, EOF };
@@ -178,8 +210,9 @@ const WriteError = error{ IsDir, NoWrite } || ResizeError;
 
 pub const INodeOps = struct {
     lookup: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) LookupError!FsData,
+    unlink: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) UnlinkError!void,
     create: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8, modes: Modes) CreateError!void,
-    destroy: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) DestroyError!void,
+    destroy: *const fn(ptr: *anyopaque, inode: *Inode) DestroyError!void,
     resize: *const fn(ptr: *anyopaque, inode: *Inode, len: usize) ResizeError!void,
     rename: *const fn(ptr: *anyopaque, parent: *Inode, old: []const u8, new: []const u8) RenameError!void,
     stat: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) Stat,

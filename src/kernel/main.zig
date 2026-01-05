@@ -31,52 +31,9 @@ fn initProcess() void {
     const f = vfs.open(mm.kalloc, "/initramfs/bin/cool_bins/init", .{.create = 1, .write = 1}) catch {
         @panic("init not found.");
     };
-    defer vfs.close(mm.kalloc, f);
-    {
-        const stat = vfs.stat(f) catch @panic("invalid file");
-        uart.print("stat = {c}\n", .{stat});
-    }
+    vfs.close(mm.kalloc, f);
 
-    const written = vfs.write(f, "cool af data") catch @panic("error while writing to file");
-    uart.print("written = {}\n", .{written});
-
-    f.offset = 0;
-
-    {
-        const stat = vfs.stat(f) catch @panic("invalid file");
-        uart.print("stat = {c}\n", .{stat});
-    }
-
-    const written_again = vfs.write(f, "cool af data more more more more more more more data not a factor of 8") catch {
-        @panic("error while writing to file");
-    };
-    uart.print("written_again = {}\n", .{written_again});
-
-    f.offset = 0;
-
-    while(true) {
-        var buf = [_]u8{0} ** 8;
-        const read = vfs.read(f, &buf) catch |e| switch(e) {
-            error.EOF => break,
-            else => @panic("error while writing to file")
-        };
-        uart.print("read = {}\n", .{read});
-        uart.print("buf = {c}\n", .{buf});
-    }
-
-    vfs.rename(mm.kalloc, f, "a") catch |e| {
-        uart.print("{}\n", .{e});
-        switch(e) {
-            error.OutOfMemory => @panic("outof mem"),
-            error.DoesNotExist => @panic("no exist"),
-            error.AlreadyExist => @panic("already exist"),
-            else => @panic("rename failed")
-        }
-    };
-    {
-        const stat = vfs.stat(f) catch @panic("invalid file");
-        uart.print("stat = {c}\n", .{stat});
-    }
+    vfs.rm(mm.kalloc, "/initramfs/bin/cool_bins/init") catch @panic("rm failed");
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {

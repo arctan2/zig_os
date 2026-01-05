@@ -3,6 +3,11 @@ const fs = @import("fs.zig");
 const uart = @import("uart");
 const utils = @import("utils");
 
+// TODO: support hard links maybe
+// currently it doesn't have concept of links at all
+// when you call unlink(parent, name) it simply just removes it from
+// directory entry
+
 pub const FileNode = struct {
     data: ?[]u8 = null,
     inode_num: usize,
@@ -53,15 +58,17 @@ fn create(ptr: *anyopaque, parent: *fs.Inode, name: []const u8, modes: fs.Modes)
     try parent_file.children.put(self.allocator, name, file);
 }
 
-fn destroy(ptr: *anyopaque, parent: *fs.Inode, name: []const u8) !void {
-    const self: *Self = @ptrCast(@alignCast(ptr));
+// Note: it doesn't care about directories it simply just remove the FileNode of name
+// from the children
+fn unlink(_: *anyopaque, parent: *fs.Inode, name: []const u8) !void {
     const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
-    if(parent_file.children.get(name)) |child| {
-        try iterativeDestroyFileNode(self.allocator, child);
-        _ = parent_file.children.remove(name);
-    } else {
-        return error.DoesNotExist;
-    }
+    return if(parent_file.children.remove(name)) {} else error.DoesNotExist;
+}
+
+fn destroy(ptr: *anyopaque, inode: *fs.Inode) !void {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    const file_node: *FileNode = @ptrCast(@alignCast(inode.fs_data.ptr));
+    try iterativeDestroyFileNode(self.allocator, file_node);
 }
 
 fn resize(ptr: *anyopaque, inode: *fs.Inode, len: usize) !void {
@@ -189,6 +196,7 @@ fn deinit(ptr: *anyopaque) !void {
 pub const fs_ops: fs.FsOps = .{
     .i_ops = .{
         .lookup = lookup,
+        .unlink = unlink,
         .create = create,
         .destroy = destroy,
         .resize = resize,
