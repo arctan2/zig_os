@@ -13,6 +13,20 @@ pub fn runTests(b: *std.Build) void {
         .root_source_file = b.path("src/utils/utils.zig"),
         .target = target,
     });
+
+    const atomic = b.createModule(.{
+        .root_source_file = b.path("src/atomic/atomic.zig"),
+        .target = target,
+    });
+
+    const fs = b.createModule(.{
+        .root_source_file = b.path("./src/fs/fs.zig"),
+        .target = target,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "atomic", .module = atomic},
+        }
+    });
     
     const vma = b.createModule(.{
         .root_source_file = b.path("./src/mm/mm.zig"),
@@ -30,9 +44,19 @@ pub fn runTests(b: *std.Build) void {
         }
     });
 
-    const tests: [2]*std.Build.Step.Compile = .{
+    const vfs = b.createModule(.{
+        .root_source_file = b.path("./src/vfs/vfs.zig"),
+        .target = target,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "fs", .module = fs},
+        }
+    });
+
+    const tests = [_]*std.Build.Step.Compile{
         b.addTest(.{ .root_module = vma, .filters = tests_filter }),
         b.addTest(.{ .root_module = lib, .filters = tests_filter }),
+        b.addTest(.{ .root_module = vfs, .filters = tests_filter }),
     };
 
     for(tests) |t| {

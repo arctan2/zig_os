@@ -4,6 +4,7 @@ const utils = @import("utils");
 const DListNode = utils.types.DListNode;
 const DoubleLinkedList = utils.types.DoubleLinkedList;
 pub const InitRamFs = @import("initramfs.zig");
+pub const Ramfs = @import("ramfs.zig");
 
 pub const MAX_FILE_NAME_LEN = 255;
 
@@ -12,20 +13,36 @@ pub const DockPoint = struct {
     fs_ptr: *anyopaque,
     fs_type: FsType,
     root_dentry: *Dentry,
-};
 
-const DListNodeDentry = DListNode(*Dentry, "sibling_node");
-const DListNodeInode = DListNode(*Inode, "lru_node");
+    pub inline fn create(allocator: std.mem.Allocator, fs_ops: FsOps, fs_ptr: *anyopaque, fs_type: FsType) !*DockPoint {
+        const self = try allocator.create(DockPoint);
+        self.* = .{
+            .fs_ops = fs_ops,
+            .fs_type = fs_type,
+            .fs_ptr = fs_ptr,
+            .root_dentry = fs_ops.getRootDentry(fs_ptr),
+        };
+        if(self.root_dentry.inode) |inode| inode.dock_point = self;
+        return self;
+    }
+
+    pub inline fn destroy(self: *DockPoint, allocator: std.mem.Allocator) !void {
+        try self.fs_ops.deinit(self.fs_ptr);
+        if(self.root_dentry.inode) |inode| inode.destroy(allocator);
+        self.root_dentry.destroy(allocator);
+        allocator.destroy(self);
+    }
+};
 
 pub const Dentry = struct {
     name: []u8,
     parent: ?*Dentry = null,
-    sibling_node: DListNodeDentry = .{},
-    children: DoubleLinkedList(DListNodeDentry) = .{},
+    sibling_node: DListNode(*Dentry, "sibling_node") = .{},
+    children: DoubleLinkedList(DListNode(*Dentry, "sibling_node")) = .{},
     inode: ?*Inode = null,
     ref_count: usize = 0,
     lock: SpinLock = .{},
-    lru_node: ?DListNodeDentry = null,
+    lru_node: ?DListNode(*Dentry, "lru_node") = null,
 
     pub fn create(allocator: std.mem.Allocator, name: []const u8, parent: ?*Dentry, inode: ?*Inode) !*Dentry {
         if(name.len > MAX_FILE_NAME_LEN) {
@@ -38,6 +55,10 @@ pub const Dentry = struct {
             .inode = inode,
         };
         return dentry;
+    }
+
+    pub inline fn createLruNode(self: *Dentry) void {
+        self.lru_node = .{};
     }
 
     pub inline fn destroy(self: *Dentry, allocator: std.mem.Allocator) void {
@@ -78,7 +99,7 @@ pub const Dentry = struct {
     }
 
     pub inline fn isDir(self: *Dentry) !bool {
-        return (try self.stat()).modes.is_dir == 1;
+        return (try self.stat()).file_flags.is_dir == 1;
     }
 
     pub const HashKey = struct {
@@ -103,7 +124,8 @@ pub const Dentry = struct {
 
 pub const FsData = struct {
     inode_num: usize,
-    ptr: *anyopaque
+    ptr: *anyopaque,
+    link_count: usize
 };
 
 pub const Inode = struct {
@@ -111,7 +133,7 @@ pub const Inode = struct {
     dock_point: ?*DockPoint,
     ref_count: usize,
     lock: SpinLock,
-    lru_node: ?DListNodeInode,
+    lru_node: ?DListNode(*Inode, "lru_node"),
 
     pub const HashKey = struct {
         dock_point: ?*DockPoint,
@@ -170,11 +192,12 @@ pub const File = struct {
     }
 
     pub inline fn destory(self: *File, allocator: std.mem.Allocator) void {
+        self.dentry.decRefAtomic();
         allocator.destroy(self);
     }
 };
 
-pub const Modes = packed struct {
+pub const FileFlags = packed struct {
     is_dir: u1 = 0,
     w: u1 = 1,
     x: u1 = 0
@@ -183,7 +206,7 @@ pub const Modes = packed struct {
 pub const Stat = struct {
     name: []const u8,
     size: usize,
-    modes: Modes
+    file_flags: FileFlags
 };
 
 pub const FsType = enum(u8) {
@@ -200,9 +223,7 @@ pub const INodeOpsError = error {
 };
 
 const LookupError = error{ OutOfMemory, DoesNotExist };
-const UnlinkError = error{} || LookupError;
 const CreateError = error{ OutOfMemory, AlreadyExist, InvalidFileName };
-const DestroyError = error{ OutOfMemory };
 const ResizeError = error{OutOfMemory, IsDir};
 const RenameError = error{} || LookupError || CreateError;
 const ReadError = error{ IsDir, EOF };
@@ -210,9 +231,9 @@ const WriteError = error{ IsDir, NoWrite } || ResizeError;
 
 pub const INodeOps = struct {
     lookup: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) LookupError!FsData,
-    unlink: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) UnlinkError!void,
-    create: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8, modes: Modes) CreateError!void,
-    destroy: *const fn(ptr: *anyopaque, inode: *Inode) DestroyError!void,
+    unlink: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) void,
+    create: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8, file_flags: FileFlags) CreateError!void,
+    destroy: *const fn(ptr: *anyopaque, inode: *Inode) void,
     resize: *const fn(ptr: *anyopaque, inode: *Inode, len: usize) ResizeError!void,
     rename: *const fn(ptr: *anyopaque, parent: *Inode, old: []const u8, new: []const u8) RenameError!void,
     stat: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) Stat,

@@ -59,7 +59,6 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     scheduler.init(kvmem);
 
-    vfs.init(mm.kalloc) catch @panic("out of mem");
     const initramfs_ctx = fs.InitRamFs.init(mm.kalloc, initramfs_img) catch @panic("out of mem");
     vfs.dock(mm.kalloc, "initramfs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram) catch {
         @panic("fs already exists on that name. Unmount it first.");
@@ -133,3 +132,5 @@ pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
     uart.puts("\n");
     while (true) {}
 }
+
+
