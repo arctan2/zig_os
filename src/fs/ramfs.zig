@@ -55,14 +55,21 @@ fn create(ptr: *anyopaque, parent: *fs.Inode, name: []const u8, file_flags: fs.F
     }
 
     const file = try FileNode.create(self.allocator, self.getNextInodeNum(), file_flags);
-    try parent_file.children.put(self.allocator, name, file);
+
+    const file_name = try self.allocator.dupe(u8, name);
+    errdefer self.allocator.free(file_name);
+
+    try parent_file.children.put(self.allocator, file_name, file);
 }
 
 // Note: it doesn't care about directories it simply just remove the FileNode of name
 // from the children
-fn unlink(_: *anyopaque, parent: *fs.Inode, name: []const u8) void {
+fn unlink(ptr: *anyopaque, parent: *fs.Inode, name: []const u8) void {
+    const self: *Self = @ptrCast(@alignCast(ptr));
     const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
-    _ = parent_file.children.remove(name);
+    if(parent_file.children.fetchRemove(name)) |kv| {
+        self.allocator.free(kv.key);
+    }
 }
 
 fn destroy(ptr: *anyopaque, inode: *fs.Inode) void {
@@ -100,7 +107,9 @@ fn rename(ptr: *anyopaque, parent: *fs.Inode, old: []const u8, new: []const u8) 
     }
 
     if(parent_file.children.get(old)) |child| {
-        _ = parent_file.children.remove(old);
+        if(parent_file.children.fetchRemove(old)) |kv| {
+            self.allocator.free(kv.key);
+        }
         try parent_file.children.put(self.allocator, new, child);
         return;
     }
@@ -111,7 +120,7 @@ fn rename(ptr: *anyopaque, parent: *fs.Inode, old: []const u8, new: []const u8) 
 fn stat(_: *anyopaque, inode: *fs.Inode, name: []const u8) fs.Stat {
     const file: *FileNode = @ptrCast(@alignCast(inode.fs_data.ptr));
     
-    if(file.children.size == 0) {
+    if(file.children.count() == 0) {
         if(file.data) |data| {
             return .{ .name = name, .size = data.len, .file_flags = file.file_flags };
         }
@@ -168,7 +177,7 @@ fn write(ptr: *anyopaque, inode: *fs.Inode, offset: usize, buf: []const u8) !usi
 }
 
 fn iterativeDestroyFileNode(allocator: std.mem.Allocator, root_file: *FileNode) !void {
-    var stack = try std.ArrayList(*FileNode).initCapacity(allocator, root_file.children.size);
+    var stack = try std.ArrayList(*FileNode).initCapacity(allocator, root_file.children.count());
     defer stack.deinit(allocator);
 
     try stack.append(allocator, root_file);
@@ -176,6 +185,7 @@ fn iterativeDestroyFileNode(allocator: std.mem.Allocator, root_file: *FileNode) 
     while(stack.pop()) |f| {
         var iter = f.children.iterator();
         while(iter.next()) |entry| {
+            allocator.free(entry.key_ptr.*);
             try stack.append(allocator, entry.value_ptr.*);
         }
         if(f.data) |data| allocator.free(data);

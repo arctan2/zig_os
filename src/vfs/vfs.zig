@@ -1,8 +1,10 @@
 const std = @import("std");
+const expect = std.testing.expect;
 const uart = @import("uart");
 const fs = @import("fs");
-const DListNode = @import("utils").types.DListNode;
-const DoubleLinkedList = @import("utils").types.DoubleLinkedList;
+const utils = @import("utils");
+const DListNode = utils.types.DListNode;
+const DoubleLinkedList = utils.types.DoubleLinkedList;
 
 var lru_inode: DoubleLinkedList(DListNode(*fs.Inode, "lru_node")) = .{};
 var lru_dentry: DoubleLinkedList(DListNode(*fs.Dentry, "lru_node")) = .{};
@@ -10,18 +12,36 @@ var inode_cache: std.AutoHashMapUnmanaged(fs.Inode.HashKey, *fs.Inode) = .empty;
 var dentry_cache: std.HashMapUnmanaged(fs.Dentry.HashKey, *fs.Dentry, fs.Dentry.HashKey.Context, 80) = .empty;
 var dock_points: std.StringHashMapUnmanaged(*fs.DockPoint) = .empty;
 
+pub fn invalidateDentryCache(allocator: std.mem.Allocator) void {
+    lru_dentry.clear();
+    dentry_cache.deinit(allocator);
+    dentry_cache = .empty;
+}
+
+pub fn invalidateInodeCache(allocator: std.mem.Allocator) void {
+    lru_inode.clear();
+    inode_cache.deinit(allocator);
+    inode_cache = .empty;
+}
+
 pub fn dock(allocator: std.mem.Allocator, name: []const u8, fs_ops: fs.FsOps, fs_ptr: *anyopaque, fs_type: fs.FsType) !void {
     if(dock_points.contains(name)) {
         return error.AlreadyExist;
     }
     const dock_point = try fs.DockPoint.create(allocator, fs_ops, fs_ptr, fs_type); 
-    try dock_points.put(allocator, name, dock_point);
+    const dock_name = try allocator.dupe(u8, name);
+    errdefer allocator.free(dock_name);
+    try dock_points.put(allocator, dock_name, dock_point);
 }
 
 pub fn undock(allocator: std.mem.Allocator, name: []const u8) !*anyopaque {
     const dock_point = dock_points.get(name) orelse return error.NotFound;
     const f = dock_point.fs_ptr;
-    _ = dock_points.remove(name);
+    invalidateInodeCache(allocator);
+    invalidateDentryCache(allocator);
+    if(dock_points.fetchRemove(name)) |kv| {
+        allocator.free(kv.key);
+    }
     try dock_point.destroy(allocator);
     return f;
 }
@@ -59,7 +79,7 @@ fn createCachedDentryIfNotExist(
     inode.incRefAtomic();
 
     try inode_cache.put(allocator, .{ .inode_num = inode.fs_data.inode_num, .dock_point = inode.dock_point }, inode);
-    try dentry_cache.put(allocator, .{ .parent = parent, .name = name }, dentry);
+    try dentry_cache.put(allocator, .{ .parent = parent, .name = dentry.name }, dentry);
 
     return dentry;
 }
@@ -85,35 +105,40 @@ fn unlinkLockedDentry(dentry: *fs.Dentry) void {
 
 fn destroyLockedInode(allocator: std.mem.Allocator, inode: *fs.Inode) void {
     _ = inode_cache.remove(.{ .inode_num = inode.fs_data.inode_num, .dock_point = inode.dock_point });
-
-    const dock_point = inode.dock_point orelse return;
     if(inode.lru_node) |lru| {
         lru_inode.remove(@constCast(&lru));
     }
-    dock_point.fs_ops.i_ops.destroy(dock_point.fs_ptr, inode);
     inode.lock.unlock();
     inode.destroy(allocator);
 }
 
+fn checkDestroyInodeLocked(allocator: std.mem.Allocator, dentry: *fs.Dentry, comptime call_destroy: bool) void {
+    if(dentry.inode) |inode| {
+        inode.lock.lock();
+        if(inode.ref_count > 0) inode.ref_count -= 1;
+        if(inode.ref_count == 0) {
+            if(call_destroy) {
+                const dock_point = inode.dock_point orelse return;
+                dock_point.fs_ops.i_ops.destroy(dock_point.fs_ptr, inode);
+            }
+            destroyLockedInode(allocator, inode);
+        } else {
+            inode.lock.unlock();
+        }
+    }
+}
+
 fn iterDestroyLockedDentry(allocator: std.mem.Allocator, dentry: *fs.Dentry) void {
     var cur = dentry;
-    while(cur.ref_count == 0) {
-        const next_parent = cur.parent;
-
-        if(cur.inode) |inode| {
-            inode.lock.lock();
-            if(inode.ref_count > 0) inode.ref_count -= 1;
-            if(inode.ref_count == 0) {
-                destroyLockedInode(allocator, inode);
-            } else {
-                inode.lock.unlock();
-            }
-        }
-
+    while(cur.ref_count == 0 and !std.mem.eql(u8, cur.name, "/")) {
+        const next_parent = cur.parent orelse return;
+        next_parent.lock.lock();
+        next_parent.children.remove(&cur.sibling_node);
+        checkDestroyInodeLocked(allocator, cur, false);
+        _ = dentry_cache.remove(.{ .parent = next_parent, .name = cur.name });
         cur.lock.unlock();
         cur.destroy(allocator);
-        cur = next_parent orelse return;
-        cur.lock.lock();
+        cur = next_parent;
         cur.ref_count -= 1;
     }
     cur.lock.unlock();
@@ -156,6 +181,7 @@ fn openDentry(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode
     const lookup_res = try lookupIter(allocator, &names, dock_point);
     const last_dir_dentry = lookup_res.@"0";
     const last_name = lookup_res.@"1";
+
 
     if(last_name) |name| {
         const parent_inode = last_dir_dentry.inode.?;
@@ -246,7 +272,7 @@ pub fn mkdir(allocator: std.mem.Allocator, path: []const u8) !void {
         _ = i_ops.lookup(fs_ptr, parent_inode, name) catch |e| { 
             switch(e) {
                 error.DoesNotExist => {
-                    try i_ops.create(dock_point.fs_ptr, last_dir_dentry.inode.?, name, .{ .is_dir = 1 });
+                    try i_ops.create(dock_point.fs_ptr, parent_inode, name, .{ .is_dir = 1 });
                     const fs_data = try i_ops.lookup(fs_ptr, parent_inode, name);
                     _ = try createCachedDentryIfNotExist(allocator, fs_data, dock_point, name, last_dir_dentry);
                     return;
@@ -266,7 +292,18 @@ pub fn rm(allocator: std.mem.Allocator, path: []const u8) !void {
     }
     dentry.lock.lock();
     unlinkLockedDentry(dentry);
-    iterDestroyLockedDentry(allocator, dentry);
+
+    const parent = dentry.parent orelse return;
+    parent.lock.lock();
+    parent.children.remove(&dentry.sibling_node);
+
+    checkDestroyInodeLocked(allocator, dentry, true);
+
+    _ = dentry_cache.remove(.{ .parent = parent, .name = dentry.name });
+    dentry.lock.unlock();
+    dentry.destroy(allocator);
+    parent.ref_count -= 1;
+    iterDestroyLockedDentry(allocator, parent);
 }
 
 // pub fn mv(f: *File, path: []const u8) void {
@@ -304,19 +341,262 @@ pub fn stat(f: *fs.File) !fs.Stat {
     return try f.dentry.stat();
 }
 
-test "basic" {
+test "basic create dir, create file, read, write and delete" {
+    lru_inode = .{};
+    lru_dentry = .{};
+    inode_cache = .empty;
+    dentry_cache = .empty;
+    dock_points = .empty;
+
     const allocator = std.testing.allocator;
-
-    const initramfs_img = @embedFile("./test_asset/initramfs_img.cpio");
-    const initramfs_ctx = try fs.InitRamFs.init(allocator, initramfs_img);
-    try dock(allocator, "initramfs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram);
-
+    const buf = [_]u8{};
+    const initramfs_ctx = try fs.InitRamFs.init(allocator, &buf);
+    try dock(allocator, "my_fs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram);
     defer {
-        const f: *fs.Ramfs = @ptrCast(@alignCast(undock(allocator, "initramfs") catch @panic("undock failed")));
+        const f: *fs.Ramfs = @ptrCast(@alignCast(undock(allocator, "my_fs") catch @panic("undock failed")));
         allocator.destroy(f);
         dentry_cache.deinit(allocator);
         inode_cache.deinit(allocator);
         dock_points.deinit(allocator);
+    }
+
+    try mkdir(allocator, "/my_fs/my_dir");
+    const f = try open(allocator, "/my_fs/my_dir/my_file.txt", .{.create = 1, .write = 1});
+    const my_data = "the coolest data the humanity has ever seen in the entirity of it's existence";
+    const written_count = try write(f, my_data);
+    try expect(written_count == my_data.len);
+
+    f.offset = 0;
+
+    var read_buf = [_]u8{0} ** my_data.len;
+    const read_count = try read(f, &read_buf);
+    try expect(read_count == my_data.len);
+
+    try expect(std.mem.eql(u8, &read_buf, my_data));
+
+    close(allocator, f);
+    try rm(allocator, "/my_fs/my_dir/my_file.txt");
+}
+
+test "loop create dir, create file, read, write and delete" {
+    lru_inode = .{};
+    lru_dentry = .{};
+    inode_cache = .empty;
+    dentry_cache = .empty;
+    dock_points = .empty;
+
+    const allocator = std.testing.allocator;
+    const buf = [_]u8{};
+    const initramfs_ctx = try fs.InitRamFs.init(allocator, &buf);
+    try dock(allocator, "my_fs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram);
+    defer {
+        const f: *fs.Ramfs = @ptrCast(@alignCast(undock(allocator, "my_fs") catch @panic("undock failed")));
+        allocator.destroy(f);
+        dentry_cache.deinit(allocator);
+        inode_cache.deinit(allocator);
+        dock_points.deinit(allocator);
+    }
+
+    for (0..100) |i| {
+        var dir_name_buf: [256]u8 = undefined;
+        const dir_name = try std.fmt.bufPrint(&dir_name_buf, "/my_fs/my_dir_{d}", .{i});
+        try mkdir(allocator, dir_name);
+
+        var file_name_buf: [256]u8 = undefined;
+        const file_name = try std.fmt.bufPrint(&file_name_buf, "/my_fs/my_dir_{d}/my_file_{d}.txt", .{i, i});
+        const f = try open(allocator, file_name, .{.create = 1, .write = 1});
+
+        var data_buf: [256]u8 = undefined;
+        const my_data = try std.fmt.bufPrint(&data_buf, "the coolest data {d} the humanity has ever seen in the entirity of it's existence", .{i});
+        const written_count = try write(f, my_data);
+        try expect(written_count == my_data.len);
+        
+        f.offset = 0;
+        var read_buf = [_]u8{0} ** 256;
+        const read_count = try read(f, read_buf[0..my_data.len]);
+        try expect(read_count == my_data.len);
+        try expect(std.mem.eql(u8, read_buf[0..my_data.len], my_data));
+
+        close(allocator, f);
+        try rm(allocator, file_name);
+    }
+}
+
+test "random loop create dir, create file, read, write and delete" {
+    lru_inode = .{};
+    lru_dentry = .{};
+    inode_cache = .empty;
+    dentry_cache = .empty;
+    dock_points = .empty;
+
+    const allocator = std.testing.allocator;
+    const buf = [_]u8{};
+    const initramfs_ctx = try fs.InitRamFs.init(allocator, &buf);
+    try dock(allocator, "my_fs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram);
+    defer {
+        const f: *fs.Ramfs = @ptrCast(@alignCast(undock(allocator, "my_fs") catch @panic("undock failed")));
+        allocator.destroy(f);
+        dentry_cache.deinit(allocator);
+        inode_cache.deinit(allocator);
+        dock_points.deinit(allocator);
+    }
+
+    const depth = 3;
+    const dirs_per_level = 3;
+    
+    var created_paths: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (created_paths.items) |path| {
+            allocator.free(path);
+        }
+        created_paths.deinit(allocator);
+    }
+
+    const CreateTree = struct {
+        fn create(
+            alloc: std.mem.Allocator,
+            paths: *std.ArrayList([]const u8),
+            current_path: []const u8,
+            current_depth: usize,
+            max_depth: usize
+        ) !void {
+            if (current_depth >= max_depth) {
+                var file_path_buf: [512]u8 = undefined;
+                const file_path = try std.fmt.bufPrint(&file_path_buf, "{s}/file.txt", .{current_path});
+                const file = try open(alloc, file_path, .{.create = 1, .write = 1});
+
+                const data = "awesome test data for recursive generated file";
+                const written = try write(file, data);
+                try expect(written == data.len);
+
+                file.offset = 0;
+                var read_buf: [100]u8 = undefined;
+                const read_count = try read(file, read_buf[0..data.len]);
+                try expect(read_count == data.len);
+                try expect(std.mem.eql(u8, read_buf[0..data.len], data));
+
+                close(alloc, file);
+                try paths.append(allocator, try alloc.dupe(u8, file_path));
+                return;
+            }
+
+            for (1..dirs_per_level + 1) |i| {
+                var dir_path_buf: [512]u8 = undefined;
+                const dir_path = try std.fmt.bufPrint(&dir_path_buf, "{s}/dir_{d}", .{current_path, i});
+                try mkdir(alloc, dir_path);
+                try create(alloc, paths, dir_path, current_depth + 1, max_depth);
+            }
+        }
+    };
+
+    try CreateTree.create(allocator, &created_paths, "/my_fs", 0, depth);
+
+    for(created_paths.items) |it| {
+        rm(allocator, it) catch {};
+    }
+}
+
+test "random depth/name loop create dir, create file, read, write and delete" {
+    lru_inode = .{};
+    lru_dentry = .{};
+    inode_cache = .empty;
+    dentry_cache = .empty;
+    dock_points = .empty;
+
+    const allocator = std.testing.allocator;
+    const buffer = [_]u8{};
+    const initramfs_ctx = try fs.InitRamFs.init(allocator, &buffer);
+    try dock(allocator, "my_fs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram);
+    defer {
+        const f: *fs.Ramfs = @ptrCast(@alignCast(undock(allocator, "my_fs") catch @panic("undock failed")));
+        allocator.destroy(f);
+        dentry_cache.deinit(allocator);
+        inode_cache.deinit(allocator);
+        dock_points.deinit(allocator);
+    }
+
+    const depth = 10;
+    const max_dirs_per_level = 20;
+    const num_operations = 1000;
+
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    const random = prng.random();
+
+    var created_paths: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (created_paths.items) |path| {
+            allocator.free(path);
+        }
+        created_paths.deinit(allocator);
+    }
+
+    const CreateTree = struct {
+        fn randomName(rand: std.Random, buf: []u8) []const u8 {
+            const len = rand.intRangeAtMost(usize, 5, 12);
+            for (0..len) |i| {
+                buf[i] = switch (rand.intRangeAtMost(u8, 0, 2)) {
+                    0 => rand.intRangeAtMost(u8, 'a', 'z'),
+                    1 => rand.intRangeAtMost(u8, 'A', 'Z'),
+                    else => rand.intRangeAtMost(u8, '0', '9'),
+                };
+            }
+            return buf[0..len];
+        }
+
+        fn create(
+            alloc: std.mem.Allocator,
+            rand: std.Random,
+            paths: *std.ArrayList([]const u8),
+            current_path: []const u8,
+            current_depth: usize,
+            max_depth: usize,
+            max_dirs: usize,
+        ) !void {
+            if (current_depth >= max_depth or paths.items.len >= num_operations) {
+                var name_buf: [20]u8 = undefined;
+                const file_name = randomName(rand, &name_buf);
+
+                var file_path_buf: [512]u8 = undefined;
+                const file_path = try std.fmt.bufPrint(&file_path_buf, "{s}/{s}.txt", .{current_path, file_name});
+
+                const file = try open(alloc, file_path, .{.create = 1, .write = 1});
+                const data = "random test data";
+                const written = try write(file, data);
+                try expect(written == data.len);
+                file.offset = 0;
+                var read_buf: [100]u8 = undefined;
+                const read_count = try read(file, read_buf[0..data.len]);
+                try expect(read_count == data.len);
+                try expect(std.mem.eql(u8, read_buf[0..data.len], data));
+                close(alloc, file);
+                try paths.append(alloc, try alloc.dupe(u8, file_path));
+                return;
+            }
+
+            const num_dirs = rand.intRangeAtMost(usize, 1, max_dirs);
+            for (0..num_dirs) |_| {
+                if (paths.items.len >= num_operations) break;
+
+                var name_buf: [20]u8 = undefined;
+                const dir_name = randomName(rand, &name_buf);
+
+                var dir_path_buf: [512]u8 = undefined;
+                const dir_path = try std.fmt.bufPrint(&dir_path_buf, "{s}/{s}", .{current_path, dir_name});
+
+                mkdir(alloc, dir_path) catch |e| {
+                    if (e == error.AlreadyExist) continue;
+                    return e;
+                };
+
+                try create(alloc, rand, paths, dir_path, current_depth + 1, max_depth, max_dirs);
+            }
+        }
+    };
+
+    try CreateTree.create(allocator, random, &created_paths, "/my_fs", 0, depth, max_dirs_per_level);
+
+    for(created_paths.items) |it| {
+        rm(allocator, it) catch {};
     }
 
 }

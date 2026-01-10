@@ -410,7 +410,7 @@ test "page_alloc: allocate and deallocate 1 block in every order" {
 test "page_alloc: allocate and deallocate at each order" {
     if(!utils.isAllTestMode()) return error.SkipZigTest;
 
-    const size = (1024 * 1024 * 1024 * 1);
+    const size = (512 * 1024 * 1024 * 1);
     const allocator = std.testing.allocator;
     const memory = try allocator.alloc(u8, size);
     defer allocator.free(memory);

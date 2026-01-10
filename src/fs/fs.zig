@@ -28,17 +28,34 @@ pub const DockPoint = struct {
 
     pub inline fn destroy(self: *DockPoint, allocator: std.mem.Allocator) !void {
         try self.fs_ops.deinit(self.fs_ptr);
-        if(self.root_dentry.inode) |inode| inode.destroy(allocator);
-        self.root_dentry.destroy(allocator);
+        try recursiveDestroyDentries(allocator, self.root_dentry);
         allocator.destroy(self);
     }
+
+    fn recursiveDestroyDentries(allocator: std.mem.Allocator, root: *Dentry) !void {
+        var stack = try std.ArrayList(*Dentry).initCapacity(allocator, root.children.size);
+        defer stack.deinit(allocator);
+
+        try stack.append(allocator, root);
+
+        while(stack.pop()) |dentry| {
+            var iter = dentry.children.iterator();
+            while(iter.next()) |entry| {
+                try stack.append(allocator, entry.container());
+            }
+            if(dentry.inode) |inode| inode.destroy(allocator);
+            dentry.destroy(allocator);
+        }
+    }
 };
+
+const DentryChild = DListNode(Dentry, "sibling_node");
 
 pub const Dentry = struct {
     name: []u8,
     parent: ?*Dentry = null,
-    sibling_node: DListNode(*Dentry, "sibling_node") = .{},
-    children: DoubleLinkedList(DListNode(*Dentry, "sibling_node")) = .{},
+    sibling_node: DentryChild = .{},
+    children: DoubleLinkedList(DentryChild) = .{},
     inode: ?*Inode = null,
     ref_count: usize = 0,
     lock: SpinLock = .{},

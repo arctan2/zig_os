@@ -23,15 +23,46 @@ pub fn DListNode(comptime ContainerT: type, field_name: []const u8) type {
 
 pub fn DoubleLinkedList(comptime ListNodeType: type) type {
     return struct {
-        const Q = @This();
+        const List = @This();
+
+        const Iterator = struct {
+            const Iter = @This();
+            cur: ?*ListNodeType = null,
+
+            pub fn init(cur: ?*ListNodeType) Iter {
+                return .{
+                    .cur = cur
+                };
+            }
+
+            pub fn next(self: *Iter) ?*ListNodeType {
+                if(self.cur) |cur| {
+                    self.cur = cur.next; 
+                    return cur;
+                }
+                return null;
+            }
+        };
+
         head: ?*ListNodeType = null,
         tail: ?*ListNodeType = null,
+        size: usize = 0,
 
-        pub inline fn isEmpty(self: *Q) bool {
-            return self.head == null;
+        pub inline fn isEmpty(self: *List) bool {
+            return self.size == 0;
         }
 
-        pub fn push(self: *Q, node: *ListNodeType) void {
+        fn decSize(self: *List) void {
+            if(self.size > 0) self.size -= 1;
+        }
+
+        pub inline fn clear(self: *List) void {
+            self.head = null;
+            self.tail = null;
+        }
+
+        pub fn push(self: *List, node: *ListNodeType) void {
+            defer self.size += 1;
             if(self.tail) |t| {
                 t.next = node;
                 node.prev = t;
@@ -42,8 +73,9 @@ pub fn DoubleLinkedList(comptime ListNodeType: type) type {
             }
         }
 
-        pub fn pop_front(self: *Q) ?*ListNodeType {
+        pub fn pop_front(self: *List) ?*ListNodeType {
             if(self.head) |h| {
+                defer self.decSize();
                 if(h == self.tail.?) {
                     self.head = null;
                     self.tail = null;
@@ -58,8 +90,9 @@ pub fn DoubleLinkedList(comptime ListNodeType: type) type {
             return null;
         }
 
-        pub fn pop(self: *Q) ?*ListNodeType {
+        pub fn pop(self: *List) ?*ListNodeType {
             if(self.tail) |t| {
+                defer self.decSize();
                 if(t == self.head.?) {
                     self.head = null;
                     self.tail = null;
@@ -76,36 +109,41 @@ pub fn DoubleLinkedList(comptime ListNodeType: type) type {
             return null;
         }
 
-        pub fn remove(self: *Q, node: *ListNodeType) void {
+        pub fn remove(self: *List, node: *ListNodeType) void {
             if(node.prev) |p| {
+                defer self.decSize();
                 p.next = node.next;
                 (if(p.next) |next| next.prev else self.tail) = p;
             } else {
                 _ = self.pop_front();
             }
         }
+
+        pub fn iterator(self: *List) Iterator {
+            return .init(self.head);
+        }
     };
 }
 
 pub fn Queue(comptime ListNodeType: type) type {
     return struct {
-        const Q = @This();
+        const Self = @This();
 
         head: ?*ListNodeType,
         tail: ?*ListNodeType,
 
-        pub fn default() Q {
+        pub fn default() Self {
             return .{
                 .head = null,
                 .tail = null
             };
         }
 
-        pub inline fn isEmpty(self: *Q) bool {
+        pub inline fn isEmpty(self: *Self) bool {
             return self.head == null;
         }
 
-        pub fn enqueue(self: *Q, node: *ListNodeType) void {
+        pub fn enqueue(self: *Self, node: *ListNodeType) void {
             if(self.tail) |t| {
                 t.next = node;
                 self.tail = node;
@@ -115,7 +153,7 @@ pub fn Queue(comptime ListNodeType: type) type {
             }
         }
 
-        pub fn dequeue(self: *Q) ?*ListNodeType {
+        pub fn dequeue(self: *Self) ?*ListNodeType {
             if(self.head) |h| {
                 if(h == self.tail.?) {
                     self.head = null;
@@ -130,13 +168,13 @@ pub fn Queue(comptime ListNodeType: type) type {
             return null;
         }
 
-        pub fn insertFront(self: *Q, node: *ListNodeType) void {
+        pub fn insertFront(self: *Self, node: *ListNodeType) void {
             node.next = self.head;
             self.head = node;
             if(self.tail == null) self.tail = node;
         }
 
-        pub fn remove(self: *Q, node: *ListNodeType) void {
+        pub fn remove(self: *Self, node: *ListNodeType) void {
             var cur = self.head;
             var prev: ?*ListNodeType = null;
 
