@@ -67,9 +67,21 @@ fn create(ptr: *anyopaque, parent: *fs.Inode, name: []const u8, file_flags: fs.F
 fn unlink(ptr: *anyopaque, parent: *fs.Inode, name: []const u8) void {
     const self: *Self = @ptrCast(@alignCast(ptr));
     const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
-    if(parent_file.children.fetchRemove(name)) |kv| {
-        self.allocator.free(kv.key);
+    if(parent_file.children.fetchRemove(name)) |entry| {
+        self.allocator.free(entry.key);
     }
+}
+
+fn link(ptr: *anyopaque, parent: *fs.Inode, name: []const u8, inode: *fs.Inode) !void {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
+    const child_file: *FileNode = @ptrCast(@alignCast(inode.fs_data.ptr));
+    if(parent_file.children.contains(name)) {
+        return error.AlreadyExist;
+    }
+    const file_name = try self.allocator.dupe(u8, name);
+    errdefer self.allocator.free(file_name);
+    try parent_file.children.put(self.allocator, file_name, child_file);
 }
 
 fn destroy(ptr: *anyopaque, inode: *fs.Inode) void {
@@ -92,29 +104,6 @@ fn resize(ptr: *anyopaque, inode: *fs.Inode, len: usize) !void {
     } else {
         file.data = try self.allocator.alloc(u8, len);
     }
-}
-
-fn rename(ptr: *anyopaque, parent: *fs.Inode, old: []const u8, new: []const u8) !void {
-    const self: *Self = @ptrCast(@alignCast(ptr));
-    const parent_file: *FileNode = @ptrCast(@alignCast(parent.fs_data.ptr));
-
-    if(new.len > fs.MAX_FILE_NAME_LEN or utils.isStringNameEmpty(new)) {
-        return error.InvalidFileName;
-    }
-
-    if(parent_file.children.contains(new)) {
-        return error.AlreadyExist;
-    }
-
-    if(parent_file.children.get(old)) |child| {
-        if(parent_file.children.fetchRemove(old)) |kv| {
-            self.allocator.free(kv.key);
-        }
-        try parent_file.children.put(self.allocator, new, child);
-        return;
-    }
-
-    return error.DoesNotExist;
 }
 
 fn stat(_: *anyopaque, inode: *fs.Inode, name: []const u8) fs.Stat {
@@ -180,13 +169,20 @@ fn iterativeDestroyFileNode(allocator: std.mem.Allocator, root_file: *FileNode) 
     var stack = try std.ArrayList(*FileNode).initCapacity(allocator, root_file.children.count());
     defer stack.deinit(allocator);
 
+    var visited: std.AutoHashMapUnmanaged(*FileNode, void) = .empty;
+    defer visited.deinit(allocator);
+    
+    try visited.put(allocator, root_file, {});
     try stack.append(allocator, root_file);
 
     while(stack.pop()) |f| {
         var iter = f.children.iterator();
         while(iter.next()) |entry| {
             allocator.free(entry.key_ptr.*);
-            try stack.append(allocator, entry.value_ptr.*);
+            if(!visited.contains(entry.value_ptr.*)) {
+                try visited.put(allocator, entry.value_ptr.*, {});
+                try stack.append(allocator, entry.value_ptr.*);
+            }
         }
         if(f.data) |data| allocator.free(data);
         f.children.deinit(allocator);
@@ -205,11 +201,11 @@ fn deinit(ptr: *anyopaque) !void {
 pub const fs_ops: fs.FsOps = .{
     .i_ops = .{
         .lookup = lookup,
+        .link = link,
         .unlink = unlink,
         .create = create,
         .destroy = destroy,
         .resize = resize,
-        .rename = rename,
         .stat = stat
     },
     .f_ops = .{

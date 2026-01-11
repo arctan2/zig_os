@@ -91,7 +91,13 @@ fn unlinkLockedDentry(dentry: *fs.Dentry) void {
     const dock_point = inode.dock_point orelse return;
 
     inode.lock.lock();
-    defer inode.lock.unlock();
+    parent.lock.lock();
+    pinode.lock.lock();
+    defer {
+        inode.lock.unlock();
+        parent.lock.unlock();
+        pinode.lock.unlock();
+    }
 
     dock_point.fs_ops.i_ops.unlink(dock_point.fs_ptr, pinode, dentry.name);
     if(inode.fs_data.link_count > 0) inode.fs_data.link_count -= 1;
@@ -101,6 +107,21 @@ fn unlinkLockedDentry(dentry: *fs.Dentry) void {
     }
 
     _ = dentry_cache.remove(.{ .parent = parent, .name = dentry.name });
+}
+
+fn linkLockedDentry(parent: *fs.Dentry, name: []const u8, inode: *fs.Inode) !void {
+    const pinode = parent.inode orelse return;
+    const dock_point = inode.dock_point orelse return;
+
+    inode.lock.lock();
+    pinode.lock.lock();
+    defer {
+        inode.lock.unlock();
+        pinode.lock.unlock();
+    }
+
+    try dock_point.fs_ops.i_ops.link(dock_point.fs_ptr, pinode, name, inode);
+    if(inode.fs_data.link_count > 0) inode.fs_data.link_count += 1;
 }
 
 fn destroyLockedInode(allocator: std.mem.Allocator, inode: *fs.Inode) void {
@@ -182,7 +203,6 @@ fn openDentry(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode
     const last_dir_dentry = lookup_res.@"0";
     const last_name = lookup_res.@"1";
 
-
     if(last_name) |name| {
         const parent_inode = last_dir_dentry.inode.?;
         const i_ops = dock_point.fs_ops.i_ops;
@@ -239,23 +259,6 @@ pub fn close(allocator: std.mem.Allocator, f: *fs.File) void {
     }
 }
 
-pub fn rename(allocator: std.mem.Allocator, f: *fs.File, new_name: []const u8) !void {
-    const dentry = f.dentry;
-    const inode = dentry.inode orelse return error.InvalidFile;
-    const dock_point = inode.dock_point orelse return error.InvalidFile;
-    if(dentry.parent) |parent| {
-        if(parent.inode) |pinode| {
-            try dock_point.fs_ops.i_ops.rename(dock_point.fs_ptr, pinode, dentry.name, new_name);
-        }
-        if(dentry.name.len != new_name.len) {
-            dentry.name = try allocator.realloc(dentry.name, new_name.len);
-        }
-        @memcpy(dentry.name, new_name);
-    } else {
-        return error.InvalidFile;
-    }
-}
-
 pub fn mkdir(allocator: std.mem.Allocator, path: []const u8) !void {
     var names = std.mem.splitSequence(u8, path, "/");
     _ = names.next();
@@ -306,8 +309,51 @@ pub fn rm(allocator: std.mem.Allocator, path: []const u8) !void {
     iterDestroyLockedDentry(allocator, parent);
 }
 
-// pub fn mv(f: *File, path: []const u8) void {
-// }
+pub fn mv(allocator: std.mem.Allocator, from: []const u8, to: []const u8) !void {
+    const from_dentry = try openDentry(allocator, from, .{ .read = 0 });
+
+    var names = std.mem.splitSequence(u8, to, "/");
+    _ = names.next();
+    const dock_point_name = names.next() orelse return error.DoesNotExist;
+    const dock_point = dock_points.get(dock_point_name) orelse return error.DoesNotExist;
+    const lookup_res = try lookupIter(allocator, &names, dock_point);
+    const last_dir_dentry = lookup_res.@"0";
+    const last_name = lookup_res.@"1";
+
+    if(last_name) |name| {
+        const parent_inode = last_dir_dentry.inode orelse return;
+        const i_ops = dock_point.fs_ops.i_ops;
+        const fs_ptr = dock_point.fs_ptr;
+        _ = i_ops.lookup(fs_ptr, parent_inode, name) catch |e| { 
+            switch(e) {
+                error.DoesNotExist => {
+                    {
+                        last_dir_dentry.lock.lock();
+                        defer last_dir_dentry.lock.unlock();
+                        if(!try last_dir_dentry.isDir()) {
+                            return error.IsNotDirectory;
+                        }
+                    }
+
+                    from_dentry.lock.lock();
+                    defer from_dentry.lock.unlock();
+                    unlinkLockedDentry(from_dentry);
+
+                    last_dir_dentry.lock.lock();
+                    defer last_dir_dentry.lock.unlock();
+
+                    try linkLockedDentry(last_dir_dentry, name, from_dentry.inode.?);
+                    last_dir_dentry.ref_count += 1;
+                    from_dentry.parent = last_dir_dentry;
+                    return;
+                },
+                else => return e
+            }
+        };
+        return error.AlreadyExist;
+    }
+    return error.DoesNotExist;
+}
 
 pub fn read(f: *fs.File, buf: []u8) !usize {
     const dentry = f.dentry;
@@ -379,6 +425,7 @@ test "basic create dir, create file, read, write and delete" {
 }
 
 test "loop create dir, create file, read, write and delete" {
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
     lru_inode = .{};
     lru_dentry = .{};
     inode_cache = .empty;
@@ -423,6 +470,7 @@ test "loop create dir, create file, read, write and delete" {
 }
 
 test "random loop create dir, create file, read, write and delete" {
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
     lru_inode = .{};
     lru_dentry = .{};
     inode_cache = .empty;
@@ -441,8 +489,8 @@ test "random loop create dir, create file, read, write and delete" {
         dock_points.deinit(allocator);
     }
 
-    const depth = 3;
-    const dirs_per_level = 3;
+    const depth = 5;
+    const dirs_per_level = 5;
     
     var created_paths: std.ArrayList([]const u8) = .empty;
     defer {
@@ -497,6 +545,7 @@ test "random loop create dir, create file, read, write and delete" {
 }
 
 test "random depth/name loop create dir, create file, read, write and delete" {
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
     lru_inode = .{};
     lru_dentry = .{};
     inode_cache = .empty;
@@ -598,5 +647,80 @@ test "random depth/name loop create dir, create file, read, write and delete" {
     for(created_paths.items) |it| {
         rm(allocator, it) catch {};
     }
+}
 
+test "mv" {
+    lru_inode = .{};
+    lru_dentry = .{};
+    inode_cache = .empty;
+    dentry_cache = .empty;
+    dock_points = .empty;
+
+    const allocator = std.testing.allocator;
+    const buf = [_]u8{};
+    const initramfs_ctx = try fs.InitRamFs.init(allocator, &buf);
+    try dock(allocator, "my_fs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram);
+    defer {
+        const f: *fs.Ramfs = @ptrCast(@alignCast(undock(allocator, "my_fs") catch @panic("undock failed")));
+        allocator.destroy(f);
+        dentry_cache.deinit(allocator);
+        inode_cache.deinit(allocator);
+        dock_points.deinit(allocator);
+    }
+
+    try mkdir(allocator, "/my_fs/my_dir");
+    try mkdir(allocator, "/my_fs/another_dir");
+
+    const og_name = "/my_fs/my_dir/my_file.txt";
+    const new_name = "/my_fs/another_dir/his_file.txt";
+
+    var f = try open(allocator, og_name, .{.create = 1, .write = 1});
+    const my_data = "the coolest data the humanity has ever seen in the entirity of it's existence";
+    const written_count = try write(f, my_data);
+    try expect(written_count == my_data.len);
+    close(allocator, f);
+
+    try mv(allocator, og_name, new_name);
+
+    f = try open(allocator, new_name, .{});
+    var read_buf = [_]u8{0} ** my_data.len;
+    var read_count = try read(f, &read_buf);
+    try expect(read_count == my_data.len);
+    try expect(std.mem.eql(u8, &read_buf, my_data));
+    close(allocator, f);
+
+    const cool_name = "/my_fs/another_dir/cool_f.md";
+    try mv(allocator, new_name, cool_name);
+
+    f = try open(allocator, cool_name, .{});
+    close(allocator, f);
+
+    var f_error = open(allocator, new_name, .{});
+    try expect(f_error == error.DoesNotExist);
+
+    const renamed_cool_name = "/my_fs/another_dir/renamed_cool_name.txt";
+    try mv(allocator, cool_name, renamed_cool_name);
+
+    f = try open(allocator, renamed_cool_name, .{});
+    read_buf = [_]u8{0} ** my_data.len;
+    read_count = try read(f, &read_buf);
+    try expect(read_count == my_data.len);
+    try expect(std.mem.eql(u8, &read_buf, my_data));
+    close(allocator, f);
+
+    f_error = open(allocator, new_name, .{});
+    try expect(f_error == error.DoesNotExist);
+
+    const final_rename = "/my_fs/another_dir/final_rename.txt";
+    try mv(allocator, renamed_cool_name, final_rename);
+
+    f = try open(allocator, final_rename, .{});
+    read_buf = [_]u8{0} ** my_data.len;
+    read_count = try read(f, &read_buf);
+    try expect(read_count == my_data.len);
+    try expect(std.mem.eql(u8, &read_buf, my_data));
+    close(allocator, f);
+
+    f_error = open(allocator, renamed_cool_name, .{});
+    try expect(f_error == error.DoesNotExist);
 }

@@ -36,6 +36,9 @@ pub const DockPoint = struct {
         var stack = try std.ArrayList(*Dentry).initCapacity(allocator, root.children.size);
         defer stack.deinit(allocator);
 
+        var deleted_inodes: std.AutoHashMapUnmanaged(*Inode, void) = .empty;
+        defer deleted_inodes.deinit(allocator);
+
         try stack.append(allocator, root);
 
         while(stack.pop()) |dentry| {
@@ -43,7 +46,12 @@ pub const DockPoint = struct {
             while(iter.next()) |entry| {
                 try stack.append(allocator, entry.container());
             }
-            if(dentry.inode) |inode| inode.destroy(allocator);
+            if(dentry.inode) |inode| {
+                if(!deleted_inodes.contains(inode)) {
+                    try deleted_inodes.put(allocator, inode, {});
+                    inode.destroy(allocator);
+                }
+            }
             dentry.destroy(allocator);
         }
     }
@@ -240,6 +248,7 @@ pub const INodeOpsError = error {
 };
 
 const LookupError = error{ OutOfMemory, DoesNotExist };
+const AttachError = error{ OutOfMemory, AlreadyExist };
 const CreateError = error{ OutOfMemory, AlreadyExist, InvalidFileName };
 const ResizeError = error{OutOfMemory, IsDir};
 const RenameError = error{} || LookupError || CreateError;
@@ -248,11 +257,11 @@ const WriteError = error{ IsDir, NoWrite } || ResizeError;
 
 pub const INodeOps = struct {
     lookup: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) LookupError!FsData,
+    link: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8, inode: *Inode) AttachError!void,
     unlink: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) void,
     create: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8, file_flags: FileFlags) CreateError!void,
     destroy: *const fn(ptr: *anyopaque, inode: *Inode) void,
     resize: *const fn(ptr: *anyopaque, inode: *Inode, len: usize) ResizeError!void,
-    rename: *const fn(ptr: *anyopaque, parent: *Inode, old: []const u8, new: []const u8) RenameError!void,
     stat: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) Stat,
 };
 
