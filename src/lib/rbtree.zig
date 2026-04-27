@@ -39,6 +39,40 @@ pub fn RBTree(comptime K: type, comptime V: type, comptime Context: type, cmp: *
 
         const Self = @This();
 
+        pub const SortedIterator = struct {
+            rbtree: *Self,
+            cur: ?*Node,
+
+            fn init(rbtree: *Self) SortedIterator {
+                return .{
+                    .cur = if(rbtree.root) |root| Self.findMinNode(root) else null,
+                    .rbtree = rbtree
+                };
+            }
+
+            pub fn next(self: *SortedIterator) ?*Node {
+                if(self.cur) |cur| {
+                    var node: ?*Node = cur;
+                    if(cur.right) |right| {
+                        const c = self.cur;
+                        self.cur = Self.findMinNode(right);
+                        return c;
+                    }
+
+                    var parent = cur.parent;
+
+                    while(parent) |p| {
+                        if(p.right != node) break;
+                        node = p;
+                        parent = node.?.parent;
+                    }
+                    self.cur = parent;
+                    return cur;
+                }
+                return null;
+            }
+        };
+
         root: ?*Node,
         context: Context,
 
@@ -58,6 +92,10 @@ pub fn RBTree(comptime K: type, comptime V: type, comptime Context: type, cmp: *
                 if(n.right) |r| try stack.append(allocator, r);
                 n.destroy(allocator);
             }
+        }
+
+        pub fn sortedIter(self: *Self) SortedIterator {
+            return SortedIterator.init(self);
         }
 
         //    n               c
@@ -84,7 +122,7 @@ pub fn RBTree(comptime K: type, comptime V: type, comptime Context: type, cmp: *
         //       /               / \
         //      c   ---->       a   n
         //     / \                 /
-//    a   b               b
+        //    a   b               b
         fn rotateRight(self: *Self, node: *Node) void {
             const child = node.left.?;
             node.left = child.right;
@@ -296,7 +334,7 @@ pub fn RBTree(comptime K: type, comptime V: type, comptime Context: type, cmp: *
             return null;
         }
 
-        inline fn findMinNode(node: *Node) *Node {
+        fn findMinNode(node: *Node) *Node {
             var cur = node;
             while(true) {
                 if(cur.left) |l| cur = l else break;
@@ -712,4 +750,30 @@ fn testWithSeed(seed: usize) !void {
 test "delete random loop" {
     if(!utils.isAllTestMode()) return;
     for(1..1000) |i| try testWithSeed(i);
+}
+
+test "iterator" {
+    const allocator = std.testing.allocator;
+    var rbtree = RBTree(usize, usize, void, cmpFn).init({});
+    defer rbtree.deinit(allocator) catch {};
+
+    const to_insert = [_]usize{ 2, 8, 1, 7, 6, 5, 4, 3 };
+
+    for(to_insert) |i| {
+        _ = try rbtree.insert(allocator, i, i);
+    }
+    try expect(rbtree.root != null);
+
+    var iterator = rbtree.sortedIter();
+
+    for(1..9) |i| {
+        try expect(i == iterator.next().?.key);
+    }
+
+    iterator = rbtree.sortedIter();
+    while(iterator.next()) |next| {
+        rbtree.removeDestroy(allocator, next.key);
+    }
+
+    try expect(rbtree.root == null);
 }

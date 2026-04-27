@@ -59,12 +59,14 @@ end_if_else:
 	add sp, sp, #12
 	ldmia sp!, {r0-r12, pc}
 
+
 _reset_handler:
 	sub lr, lr, #4
 	push {r0-r12, lr}
 	bl reset_handler
 	pop {r0-r12, lr}
 	subs pc, lr, #0
+
 
 _undef_handler:
 	sub lr, lr, #4
@@ -73,12 +75,14 @@ _undef_handler:
 	pop {r0-r12, lr}
 	subs pc, lr, #0
 
+
 _svc_handler:
 	sub lr, lr, #4
 	push {r0-r12, lr}
 	bl svc_handler
 	pop {r0-r12, lr}
 	subs pc, lr, #0
+
 
 _pabort_handler:
 	sub lr, lr, #4
@@ -87,12 +91,14 @@ _pabort_handler:
 	pop {r0-r12, lr}
 	subs pc, lr, #0
 
+
 _dabort_handler:
 	sub lr, lr, #4
 	push {r0-r12, lr}
 	bl dabort_handler
 	pop {r0-r12, lr}
 	subs pc, lr, #0
+
 
 _fiq_handler:
 	sub lr, lr, #4

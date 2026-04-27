@@ -57,10 +57,10 @@ pub const L2TableAddr = packed struct(usize) {
 pub const L1PageTable = struct {
     entries: [4096]usize,
 
-    pub fn init() !*L1PageTable {
+    pub fn init(kernel_l1: *L1PageTable) !*L1PageTable {
         const self_page = try page_alloc.allocPages(4);
         const self: *L1PageTable = @ptrFromInt(page_alloc.pageToPhys(self_page));
-        @memset(&self.entries, 0);
+        @memcpy(&self.entries, &kernel_l1.entries);
         return self;
     }
 

@@ -1,10 +1,12 @@
 const std = @import("std");
 const uart = @import("uart");
 const utils = @import("utils");
+const lib = @import("lib");
 const kglobal = @import("kglobal.zig");
 const page_alloc = @import("page_alloc.zig");
 const page_table = @import("./page_table.zig");
 const testing_utils = @import("testing_utils.zig");
+const fs = @import("fs");
 
 pub const VirtAddress = packed struct(u32) {
     offset: u12,
@@ -16,12 +18,39 @@ pub const MapFlags = struct {
     type: enum { Section, L2 },
 };
 
-pub const Vma = struct {
+const VirtAllocationNode = lib.list.DListNode(VirtAllocation, "list_node");
+
+pub const VirtAllocation = struct {
+    pub const Type = enum {
+        stack,
+        heap,
+        section,
+        other,
+        kernel,
+    };
+
+    start: usize,
+    end: usize,
+    file: ?*fs.File,
+    file_off: usize,
+    list_node: VirtAllocationNode,
+    type: Type,
+
+    pub fn cmpFn(_: void, a: usize, b: usize) std.math.Order {
+        if(a == b) return .eq;
+        return if(a < b) .lt else .gt;
+    }
+};
+
+pub const VirtAddrSpace = struct {
+    const Self = @This();
+    vma_list: lib.list.DoubleLinkedList(VirtAllocationNode) = .{},
+    vma_rbtree: lib.RBTree(usize, *VirtAllocation, void, VirtAllocation.cmpFn) = .init({}),
     l1: *page_table.L1PageTable,
 
-    pub fn init() !Vma {
+    pub fn init(kernel_l1: *page_table.L1PageTable) !VirtAddrSpace {
         return .{
-            .l1 = try .init(),
+            .l1 = try .init(kernel_l1),
         };
     }
 
@@ -30,7 +59,7 @@ pub const Vma = struct {
     // the responsibility of the caller.
     // IT DOES NOT DO ALLOCATIONS FOR THE ACTUAL PAGES. IT IS DONE BY THE CALLER
     // It only does allocations for the page table itself.
-    pub fn map(self: *Vma, virt: usize, phys: usize, flags: MapFlags) !void {
+    pub fn mapAddr(self: *VirtAddrSpace, virt: usize, phys: usize, flags: MapFlags) !void {
         const virt_addr: VirtAddress = @bitCast(virt);
         const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
 
@@ -66,7 +95,7 @@ pub const Vma = struct {
         }
     }
 
-    pub fn unmap(self: *Vma, virt: usize) void {
+    pub fn unmapAddr(self: *VirtAddrSpace, virt: usize) void {
         const virt_addr: VirtAddress = @bitCast(virt);
         const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
 
@@ -85,6 +114,10 @@ pub const Vma = struct {
             else => {},
         }
     }
+
+    pub fn mmap(start: usize, end: usize, alloc_type: VirtAllocation.Type) void {
+        uart.print("start = {}, end = {}, type = {}", .{start, end, alloc_type});
+    }
 };
 
 test "alloc and dealloc ~1GB l1 entries" {
@@ -93,12 +126,14 @@ test "alloc and dealloc ~1GB l1 entries" {
     const g = try testing_utils.testBasicInit(&allocator);
     defer allocator.free(g.memory);
 
-    var mem = try Vma.init();
+    const arr: [4096]usize = [_]usize{0} ** 4096;
+    var l1: page_table.L1PageTable = .{ .entries = arr };
+    var mem = try VirtAddrSpace.init(&l1);
 
     for(0..1020) |i| {
         const cur: usize = i * page_alloc.SECTION_SIZE;
         const block = try page_alloc.allocPages(256);
-        try mem.map(cur, page_alloc.pageToPhys(block), .{ .type = .Section });
+        try mem.mapAddr(cur, page_alloc.pageToPhys(block), .{ .type = .Section });
     }
 
     mem.l1.drop();
@@ -112,7 +147,9 @@ test "map and unmap few individual pages" {
     const g = try testing_utils.testBasicInit(&allocator);
     defer allocator.free(g.memory);
 
-    var mem = try Vma.init();
+    const arr: [4096]usize = [_]usize{0} ** 4096;
+    var l1: page_table.L1PageTable = .{ .entries = arr };
+    var mem = try VirtAddrSpace.init(&l1);
 
     var my_list: std.ArrayList(*page_alloc.Page) = .empty;
     defer my_list.deinit(allocator);
@@ -123,12 +160,12 @@ test "map and unmap few individual pages" {
     for(0..100) |_| {
         const page = try page_alloc.allocPages(1);
         try my_list.append(allocator, page);
-        try mem.map(cur_virt, page_alloc.pageToPhys(page), .{ .type = .L2 });
+        try mem.mapAddr(cur_virt, page_alloc.pageToPhys(page), .{ .type = .L2 });
         cur_virt += page_alloc.PAGE_SIZE;
     }
 
     for(my_list.items) |it| {
-        mem.unmap(page_alloc.pageToPhys(it));
+        mem.unmapAddr(page_alloc.pageToPhys(it));
         page_alloc.freeBlock(it);
     }
 

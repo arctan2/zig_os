@@ -3,8 +3,9 @@ const expect = std.testing.expect;
 const uart = @import("uart");
 const fs = @import("fs");
 const utils = @import("utils");
-const DListNode = utils.types.DListNode;
-const DoubleLinkedList = utils.types.DoubleLinkedList;
+const lib = @import("lib");
+const DListNode = lib.list.DListNode;
+const DoubleLinkedList = lib.list.DoubleLinkedList;
 
 var lru_inode: DoubleLinkedList(DListNode(*fs.Inode, "lru_node")) = .{};
 var lru_dentry: DoubleLinkedList(DListNode(*fs.Dentry, "lru_node")) = .{};
@@ -192,7 +193,7 @@ fn lookupIter(
     return .{cur, null};
 }
 
-// doesn't increment the ref count of dentry.
+// doesn't increment the ref count of returned dentry.
 // it's the responsibility of caller
 fn openDentry(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode) !*fs.Dentry {
     var names = std.mem.splitSequence(u8, path, "/");
@@ -568,7 +569,13 @@ test "random depth/name loop create dir, create file, read, write and delete" {
     const max_dirs_per_level = 20;
     const num_operations = 1000;
 
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    var threaded_io = std.Io.Threaded.init_single_threaded;
+    const io = threaded_io.io();
+    defer threaded_io.deinit();
+    var time_now = std.Io.Clock.now(.real, io);
+    const millis = time_now.toMilliseconds();
+
+    var prng = std.Random.DefaultPrng.init(@intCast(millis));
     const random = prng.random();
 
     var created_paths: std.ArrayList([]const u8) = .empty;

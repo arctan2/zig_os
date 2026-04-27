@@ -19,28 +19,31 @@ pub fn runTests(b: *std.Build) void {
         .target = target,
     });
 
+    const lib = b.createModule(.{
+        .root_source_file = b.path("./src/lib/lib.zig"),
+        .target = target,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+        }
+    });
+    
     const fs = b.createModule(.{
         .root_source_file = b.path("./src/fs/fs.zig"),
         .target = target,
         .imports = &.{
             .{.name = "utils", .module = utils},
             .{.name = "atomic", .module = atomic},
+            .{.name = "lib", .module = lib},
         }
     });
-    
+
     const vma = b.createModule(.{
         .root_source_file = b.path("./src/mm/mm.zig"),
         .target = target,
         .imports = &.{
             .{.name = "utils", .module = utils},
-        }
-    });
-
-    const lib = b.createModule(.{
-        .root_source_file = b.path("./src/lib/lib.zig"),
-        .target = target,
-        .imports = &.{
-            .{.name = "utils", .module = utils},
+            .{.name = "lib", .module = lib},
+            .{.name = "fs", .module = fs},
         }
     });
 
@@ -50,6 +53,7 @@ pub fn runTests(b: *std.Build) void {
         .imports = &.{
             .{.name = "utils", .module = utils},
             .{.name = "fs", .module = fs},
+            .{.name = "lib", .module = lib},
         }
     });
 

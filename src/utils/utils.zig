@@ -1,6 +1,5 @@
 const std = @import("std");
 pub const ptr = @import("ptr.zig");
-pub const types = @import("types.zig");
 
 pub fn bigToNative(comptime T: type, s: T) T {
     return std.mem.bigToNative(T, s);
@@ -15,11 +14,16 @@ pub fn structBigToNative(comptime T: type, s: *const T) T {
 }
 
 pub fn isAllTestMode() bool {
-    return std.process.hasEnvVar(std.testing.allocator, "all") catch false;
+    return false;
 }
 
 pub fn newPrng() std.Random.Xoshiro256 {
-    return std.Random.Xoshiro256.init(@intCast(std.time.nanoTimestamp()));
+    var threaded_io = std.Io.Threaded.init_single_threaded;
+    const io = threaded_io.io();
+    defer threaded_io.deinit();
+    var time_now = std.Io.Clock.now(.real, io);
+    const nanos = time_now.toNanoseconds();
+    return std.Random.Xoshiro256.init(@intCast(nanos));
 }
 
 pub fn read32(reg: u32) u32 {

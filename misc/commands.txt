@@ -1,0 +1,8 @@
+dtb_to_dts:
+	dtb to dts: dtc -I dtb -O dts <dtb_file> -o <output_file>
+
+strip_bytes:
+	dd if=<input> of=<output> bs=1 skip=64
+
+hexdump:
+	hexdump -C <file> | head -n 10

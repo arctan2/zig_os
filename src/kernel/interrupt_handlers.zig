@@ -3,7 +3,6 @@ const uart = @import("uart");
 const arm = @import("arm");
 const mmio = @import("mmio");
 const gicv2 = mmio.gicv2;
-const utils = @import("utils");
 const scheduler = @import("scheduler.zig");
 const timers = @import("devices").timers;
 

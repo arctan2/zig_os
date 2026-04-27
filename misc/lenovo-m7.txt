@@ -1,0 +1,17 @@
+model: Lenovo TB-7305F
+
+cores: 4
+architecture: 4x ARM Cortex-A7 @ 1.30 GHz
+revision: r0p3
+
+gpu_renderer: Mali-400 MP
+
+board: mt8321_GO
+hardware: mt8321
+build_id: TB-7305F_S100070_200909_ROW
+kernel_architecture: armv7l
+kernel_version: 4.9.117+ (TB-7305F_S100070_200909_ROW)
+
+
+screen_resolution: 600 x 1024 px
+screen_density: 159dpi

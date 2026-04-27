@@ -1,8 +1,8 @@
 const std = @import("std");
 const SpinLock = @import("atomic").SpinLock;
-const utils = @import("utils");
-const DListNode = utils.types.DListNode;
-const DoubleLinkedList = utils.types.DoubleLinkedList;
+const lib = @import("lib");
+const DListNode = lib.list.DListNode;
+const DoubleLinkedList = lib.list.DoubleLinkedList;
 pub const InitRamFs = @import("initramfs.zig");
 pub const Ramfs = @import("ramfs.zig");
 

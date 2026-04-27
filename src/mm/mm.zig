@@ -5,27 +5,28 @@ pub const page_table = @import("page_table.zig");
 pub const vma = @import("vma.zig");
 pub const kglobal = @import("kglobal.zig");
 pub const page_alloc = @import("page_alloc.zig");
+const gpa = @import("gpa.zig");
 
 pub const kbacking_alloc = @import("kbacking_alloc.zig");
-var gpa_allocator = std.heap.DebugAllocator(.{ .safety = false, .MutexType = atomic.SpinLock }) {
+var gpa_allocator = gpa.DebugAllocator(.{ .safety = false, .MutexType = atomic.SpinLock }) {
     .backing_allocator = kbacking_alloc.allocator
 };
 pub const kalloc = gpa_allocator.allocator();
 
-pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kvmem: *vma.Vma) !void {
+pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kaddr_space: *vma.VirtAddrSpace) !void {
     const high_kernel_start = @intFromPtr(&kglobal._early_kernel_start);
     const mem_end = kbounds.free_region_start + kbounds.free_region_size;
     
     var cur = std.mem.alignForward(usize, high_kernel_start, page_alloc.SECTION_SIZE);
     while(cur < mem_end) {
-        try kvmem.map(cur + @intFromPtr(&kglobal.KERNEL_OFFSET), cur, .{ .type = .Section });
+        try kaddr_space.mapAddr(cur + @intFromPtr(&kglobal.KERNEL_OFFSET), cur, .{ .type = .Section });
         cur += page_alloc.SECTION_SIZE;
     }
 }
 
-pub fn unmapIdentityKernel(kbounds: *const kglobal.KernelBounds, kvmem: *vma.Vma) void {
+pub fn unmapIdentityKernel(kbounds: *const kglobal.KernelBounds, kaddr_space: *vma.VirtAddrSpace) void {
     const addr = kbounds.kernel_start_phys;
-    kvmem.unmap(addr);
+    kaddr_space.unmapAddr(addr);
 }
 
 comptime {

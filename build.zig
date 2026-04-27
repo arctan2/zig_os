@@ -28,7 +28,7 @@ fn runCommands(b: *std.Build) void {
 
     const objdump_input = b.option([]const u8, "dump_to", "objdump to file") orelse "dump.S";
     const objdump = b.addSystemCommand(&.{"arm-linux-gnueabihf-objdump", "-d", "./zig-out/bin/kernel"});
-    const dump_file = objdump.captureStdOut();
+    const dump_file = objdump.captureStdOut(.{});
     const install_dump = b.addInstallFile(dump_file, objdump_input);
     objdump.step.dependOn(b.getInstallStep());
     b.step("objdump", "generate disassembly dump").dependOn(&install_dump.step);
@@ -59,6 +59,15 @@ pub fn build(b: *std.Build) void {
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
             .{.name = "mmio", .module = mmio},
+        }
+    });
+
+    const lib = b.createModule(.{
+        .root_source_file = b.path("src/lib/lib.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "uart", .module = uart},
         }
     });
 
@@ -96,12 +105,15 @@ pub fn build(b: *std.Build) void {
         }
     });
 
-    const lib = b.createModule(.{
-        .root_source_file = b.path("src/lib/lib.zig"),
+    const fs = b.createModule(.{
+        .root_source_file = b.path("src/fs/fs.zig"),
         .target = target,
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
+            .{.name = "utils", .module = utils},
             .{.name = "uart", .module = uart},
+            .{.name = "atomic", .module = atomic},
+            .{.name = "lib", .module = lib},
         }
     });
 
@@ -116,6 +128,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "fdt", .module = fdt},
             .{.name = "atomic", .module = atomic},
             .{.name = "lib", .module = lib},
+            .{.name = "fs", .module = fs},
         }
     });
 
@@ -137,17 +150,6 @@ pub fn build(b: *std.Build) void {
         }
     });
 
-    const fs = b.createModule(.{
-        .root_source_file = b.path("src/fs/fs.zig"),
-        .target = target,
-        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
-        .imports = &.{
-            .{.name = "utils", .module = utils},
-            .{.name = "uart", .module = uart},
-            .{.name = "atomic", .module = atomic},
-        }
-    });
-
     const vfs = b.createModule(.{
         .root_source_file = b.path("src/vfs/vfs.zig"),
         .target = target,
@@ -156,6 +158,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "utils", .module = utils},
             .{.name = "uart", .module = uart},
             .{.name = "fs", .module = fs},
+            .{.name = "lib", .module = lib},
         }
     });
 
@@ -187,6 +190,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "syscall", .module = syscall},
             .{.name = "vfs", .module = vfs},
             .{.name = "fs", .module = fs},
+            .{.name = "lib", .module = lib},
         }
     });
 
@@ -199,9 +203,9 @@ pub fn build(b: *std.Build) void {
 
     exe.setLinkerScript(b.path("./linker.ld"));
     exe.bundle_compiler_rt = true;
-    exe.addAssemblyFile(b.path("./src/asm/vector_table.S"));
-    exe.addAssemblyFile(b.path("./src/asm/start.S"));
-    exe.addAssemblyFile(b.path("./src/asm/early_kernel.S"));
+    exe.root_module.addAssemblyFile(b.path("./src/asm/vector_table.S"));
+    exe.root_module.addAssemblyFile(b.path("./src/asm/start.S"));
+    exe.root_module.addAssemblyFile(b.path("./src/asm/early_kernel.S"));
 
     b.installArtifact(exe);
 

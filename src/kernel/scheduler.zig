@@ -1,10 +1,10 @@
 const std = @import("std");
 const mm = @import("mm");
 const arm = @import("arm");
-const utils = @import("utils");
-const ListNode = utils.types.ListNode;
-const Queue = utils.types.Queue;
-const Bitmask = utils.types.Bitmask;
+const lib = @import("lib");
+const ListNode = lib.list.ListNode;
+const Queue = lib.list.Queue;
+const Bitmask = lib.Bitmask;
 const uart = @import("uart");
 
 // do not ever change the positions of the fields in this because the entire
@@ -16,6 +16,8 @@ pub const CpuState = extern struct {
     registers: [13]usize = .{0} ** 13,
     pc: usize = 0,
 };
+
+var TASK_ID_COUNTER: usize = 0;
 
 const TimeSlice = struct {
     const DEFAULT: usize = 10;
@@ -34,7 +36,7 @@ pub fn TaskInfo(comptime SchedState: type) type {
             Blocked,
         },
         priority: usize,
-        vma: mm.vma.Vma,
+        vma: mm.vma.VirtAddrSpace,
         time_remaining: usize,
         children: ?*ListNode(T, "children"),
         parent: ?*T,
@@ -55,7 +57,10 @@ pub fn TaskInfo(comptime SchedState: type) type {
 
         pub fn allocTask(gpa: std.mem.Allocator) !*T {
             const task = try gpa.create(T);
+            const id: usize = TASK_ID_COUNTER;
             task.* = T.default();
+            TASK_ID_COUNTER += 1;
+            task.id = id;
             return task;
         }
 
@@ -88,8 +93,8 @@ pub var global = Scheduler{
     .current_task = &idle_task
 };
 
-pub fn init(kvmem: mm.vma.Vma) void {
-    idle_task.vma = kvmem;
+pub fn init(kaddr_space: mm.vma.VirtAddrSpace) void {
+    idle_task.vma = kaddr_space;
     idle_task.cpu_state = .{
         .lr = 0,
         .sp = @intFromPtr(&mm.kglobal._vstack_top),

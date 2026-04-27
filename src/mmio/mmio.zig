@@ -14,15 +14,15 @@ var mmio_mapper = struct {
     }
 } { .cur = kglobal.MMIO_BASE };
 
-pub fn init(kvmem: *mm.vma.Vma, fdt_base: [*]const u8) void {
+pub fn init(kaddr_space: *mm.vma.VirtAddrSpace, fdt_base: [*]const u8) void {
     const UART_BASE = mmio_mapper.nextAddr();
-    kvmem.map(UART_BASE, uart.getUartBase(), .{ .type = .Section }) catch unreachable;
+    kaddr_space.mapAddr(UART_BASE, uart.getUartBase(), .{ .type = .Section }) catch unreachable;
     uart.setBase(UART_BASE);
 
-    initGicv2(kvmem, fdt_base);
+    initGicv2(kaddr_space, fdt_base);
 }
 
-fn initGicv2(kvmem: *mm.vma.Vma, fdt_base: [*]const u8) void {
+fn initGicv2(kaddr_space: *mm.vma.VirtAddrSpace, fdt_base: [*]const u8) void {
     const GIC_BASE = mmio_mapper.nextAddr();
     const fdt_accessor = fdt.Accessor.init(fdt_base);
 
@@ -40,7 +40,7 @@ fn initGicv2(kvmem: *mm.vma.Vma, fdt_base: [*]const u8) void {
     const distr_size = fdt.readRegFromCells(addr_size_cells, reg.data, 1);
     const cpu_iface_start = fdt.readRegFromCells(addr_size_cells, reg.data, 2);
 
-    kvmem.map(GIC_BASE, @min(distr_start, cpu_iface_start), .{ .type = .Section }) catch unreachable;
+    kaddr_space.mapAddr(GIC_BASE, @min(distr_start, cpu_iface_start), .{ .type = .Section }) catch unreachable;
 
     gicv2.D.setBase(GIC_BASE);
     gicv2.C.setBase(GIC_BASE + distr_size);

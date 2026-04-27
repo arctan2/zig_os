@@ -25,15 +25,11 @@ pub const os = struct {
     };
 };
 
-fn initProcess() void {
-    vfs.mkdir(mm.kalloc, "/initramfs/bin/cool_bins") catch @panic("cannot mkdir cool_bins");
-
-    const f = vfs.open(mm.kalloc, "/initramfs/bin/cool_bins/init", .{.create = 1, .write = 1}) catch {
-        @panic("init not found.");
-    };
-    vfs.close(mm.kalloc, f);
-
-    vfs.rm(mm.kalloc, "/initramfs/bin/cool_bins/init") catch @panic("rm failed");
+fn initProcess() !void {
+    const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .{}) catch @panic("error while open file");
+    defer vfs.close(mm.kalloc, f);
+    const stat = try vfs.stat(f);
+    uart.print("stat = {}\n", .{stat});
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
@@ -41,30 +37,30 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
 
-    var kvmem = mm.vma.Vma{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
+    var kaddr_space = mm.vma.VirtAddrSpace{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
     uart.setBase(0x09000000);
-    mmio.init(&kvmem, fdt_base);
+    mmio.init(&kaddr_space, fdt_base);
 
     const mem = fdt.getMemStartSize(fdt_base);
     const kbounds = kglobal.KernelBounds.init(mem.start, mem.size);
     kbounds.print();
-    mm.mapFreePagesToKernelL1(&kbounds, &kvmem) catch @panic("error in mapFreePagesToKernelL1");
-    kvmem.map(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }) catch unreachable;
-    mm.unmapIdentityKernel(&kbounds, &kvmem);
+    mm.mapFreePagesToKernelL1(&kbounds, &kaddr_space) catch @panic("error in mapFreePagesToKernelL1");
+    kaddr_space.mapAddr(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }) catch unreachable;
+    mm.unmapIdentityKernel(&kbounds, &kaddr_space);
 
     const initramfs_img = kglobal.getInitRamfs(&kbounds);
     
     mm.page_alloc.initGlobal(kbounds.free_region_start, kbounds.free_region_size, kglobal.VIRT_OFFSET);
     initStacks();
 
-    scheduler.init(kvmem);
+    scheduler.init(kaddr_space);
 
     const initramfs_ctx = fs.InitRamFs.init(mm.kalloc, initramfs_img) catch @panic("out of mem");
     vfs.dock(mm.kalloc, "initramfs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram) catch {
         @panic("fs already exists on that name. Unmount it first.");
     };
 
-    initProcess();
+    initProcess() catch @panic("error in init process");
 
     // var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
     // var another_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
@@ -103,7 +99,7 @@ fn coolTask() void {
 
 fn lame_task() void {
     var sum: usize = 0;
-    for(0..10_000) |i| {
+    for(0..10_00) |i| {
         sum += i;
     }
     uart.print("lame_task = {}\n", .{sum});
