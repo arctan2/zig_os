@@ -29,7 +29,7 @@ fn initProcess() !void {
     const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .{}) catch @panic("error while open file");
     defer vfs.close(mm.kalloc, f);
     const stat = try vfs.stat(f);
-    uart.print("stat = {}\n", .{stat});
+    uart.print("stat = {c}\n", .{stat});
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {

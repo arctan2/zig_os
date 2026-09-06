@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const tests = @import("tests.zig");
 
 fn runCommands(b: *std.Build) void {
@@ -26,8 +27,14 @@ fn runCommands(b: *std.Build) void {
     gdb.step.dependOn(b.getInstallStep());
     b.step("gdb", "run gdb").dependOn(&gdb.step);
 
+    const lldb = b.addSystemCommand(&.{ "lldb", "zig-out/bin/kernel", "-s", "init.lldb" });
+    lldb.step.dependOn(b.getInstallStep());
+    b.step("lldb", "run lldb").dependOn(&lldb.step);
+
+    const objdump_cmd = "arm-linux-gnueabihf-objdump";
+
     const objdump_input = b.option([]const u8, "dump_to", "objdump to file") orelse "dump.S";
-    const objdump = b.addSystemCommand(&.{"arm-linux-gnueabihf-objdump", "-d", "./zig-out/bin/kernel"});
+    const objdump = b.addSystemCommand(&.{objdump_cmd, "-d", "./zig-out/bin/kernel"});
     const dump_file = objdump.captureStdOut(.{});
     const install_dump = b.addInstallFile(dump_file, objdump_input);
     objdump.step.dependOn(b.getInstallStep());
@@ -59,15 +66,6 @@ pub fn build(b: *std.Build) void {
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
             .{.name = "mmio", .module = mmio},
-        }
-    });
-
-    const lib = b.createModule(.{
-        .root_source_file = b.path("src/lib/lib.zig"),
-        .target = target,
-        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
-        .imports = &.{
-            .{.name = "uart", .module = uart},
         }
     });
 
@@ -105,15 +103,12 @@ pub fn build(b: *std.Build) void {
         }
     });
 
-    const fs = b.createModule(.{
-        .root_source_file = b.path("src/fs/fs.zig"),
+    const lib = b.createModule(.{
+        .root_source_file = b.path("src/lib/lib.zig"),
         .target = target,
         .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
         .imports = &.{
-            .{.name = "utils", .module = utils},
             .{.name = "uart", .module = uart},
-            .{.name = "atomic", .module = atomic},
-            .{.name = "lib", .module = lib},
         }
     });
 
@@ -128,7 +123,6 @@ pub fn build(b: *std.Build) void {
             .{.name = "fdt", .module = fdt},
             .{.name = "atomic", .module = atomic},
             .{.name = "lib", .module = lib},
-            .{.name = "fs", .module = fs},
         }
     });
 
@@ -147,6 +141,18 @@ pub fn build(b: *std.Build) void {
             .{.name = "arm", .module = arm},
             .{.name = "fdt", .module = fdt},
             .{.name = "mmio", .module = mmio},
+        }
+    });
+
+    const fs = b.createModule(.{
+        .root_source_file = b.path("src/fs/fs.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+            .{.name = "atomic", .module = atomic},
+            .{.name = "lib", .module = lib},
         }
     });
 

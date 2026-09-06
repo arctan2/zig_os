@@ -119,6 +119,32 @@ pub fn DoubleLinkedList(comptime ListNodeType: type) type {
             }
         }
 
+        pub fn insertAfter(self: *List, left: *ListNodeType, node: *ListNodeType) void {
+            const right = left.next;
+
+            node.prev = left;
+            node.next = right;
+
+            left.next = node;
+
+            (if (right) |r| r.prev else self.tail) = node;
+
+            self.size += 1;
+        }
+
+        pub fn insertBefore(self: *List, right: *ListNodeType, node: *ListNodeType) void {
+            const left = right.prev;
+
+            node.next = right;
+            node.prev = left;
+
+            right.prev = node;
+
+            (if (left) |l| l.next else self.head) = node;
+
+            self.size += 1;
+        }
+
         pub fn iterator(self: *List) Iterator {
             return .init(self.head);
         }

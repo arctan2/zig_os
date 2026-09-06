@@ -1,0 +1,6 @@
+gdb-remote 1234
+
+settings set interpreter.echo-commands true
+log enable lldb all -f lldb.log
+
+command alias print_l1 memory read --format x --size 4 --count 4096

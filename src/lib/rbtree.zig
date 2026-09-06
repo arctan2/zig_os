@@ -334,6 +334,24 @@ pub fn RBTree(comptime K: type, comptime V: type, comptime Context: type, cmp: *
             return null;
         }
 
+        pub fn searchLessThan(self: *const Self, key: K) ?*Node {
+            var cur = self.root;
+            var lt: ?*Node = null;
+
+            while (cur) |c| {
+                switch (cmp(self.context, key, c.key)) {
+                    .eq => return c,
+                    .lt => cur = c.left,
+                    .gt => {
+                        lt = c;
+                        cur = c.right;
+                    },
+                }
+            }
+
+            return lt;
+        }
+
         fn findMinNode(node: *Node) *Node {
             var cur = node;
             while(true) {

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) void {
     const target = b.resolveTargetQuery(.{
@@ -35,7 +36,9 @@ pub fn build(b: *std.Build) void {
     cpio.step.dependOn(&art.step);
     b.getInstallStep().dependOn(&cpio.step);
 
-    const objcopy = b.addSystemCommand(&.{"sh", "-c", "arm-linux-gnueabi-objcopy -I binary -O elf32-littlearm -B arm " ++ CPIO ++ " initramfs.o"});
+    const objcopy_cmd = if (builtin.os.tag == .macos) "arm-none-eabi-objcopy" else "arm-linux-gnueabi-objcopy";
+
+    const objcopy = b.addSystemCommand(&.{"sh", "-c", objcopy_cmd ++ " -I binary -O elf32-littlearm -B arm " ++ CPIO ++ " initramfs.o"});
     objcopy.setCwd(b.path("./zig-out"));
     objcopy.step.dependOn(&cpio.step);
     b.getInstallStep().dependOn(&objcopy.step);

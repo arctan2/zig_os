@@ -20,6 +20,10 @@ fn insertToRamfs(ramfs: *Ramfs, entry: *const cpio.Entry, filename: []const u8) 
     const is_dir: u1 = if((mode_int & @as(u64, 0xF000)) == 0x4000) 1 else 0;
 
     while(parts.next()) |part| {
+        if(std.mem.eql(u8, part, ".")) {
+            continue;
+        }
+
         if(parts.peek() == null) {
             Ramfs.fs_ops.i_ops.create(ramfs, &cur_parent, part, .{ .is_dir = is_dir, .w = 1, .x = 0 }) catch |e| switch (e) {
                 error.OutOfMemory => @panic("out of memory."),
