@@ -118,6 +118,16 @@ fn stat(_: *anyopaque, inode: *fs.Inode, name: []const u8) fs.Stat {
     return .{ .name = name, .size = 0, .file_flags = file.file_flags };
 }
 
+fn chmod(_: *anyopaque, inode: *fs.Inode, flags: fs.FileFlags) !void {
+    const file: *FileNode = @ptrCast(@alignCast(inode.fs_data.ptr));
+
+    if(file.file_flags.is_dir == 1) {
+        return error.IsDir;
+    }
+
+    file.file_flags = flags;
+}
+
 fn getRootDentry(ptr: *anyopaque) *fs.Dentry {
     const self: *Self = @ptrCast(@alignCast(ptr));
     return self.root_dentry;
@@ -128,6 +138,10 @@ fn read(_: *anyopaque, inode: *fs.Inode, offset: usize, buf: []u8) !usize {
 
     if(file.file_flags.is_dir == 1) {
         return error.IsDir;
+    }
+
+    if(file.file_flags.r == 0) {
+        return error.NoRead;
     }
 
     if(file.data) |data| {
@@ -206,7 +220,8 @@ pub const fs_ops: fs.FsOps = .{
         .create = create,
         .destroy = destroy,
         .resize = resize,
-        .stat = stat
+        .stat = stat,
+        .chmod = chmod
     },
     .f_ops = .{
         .read = read,

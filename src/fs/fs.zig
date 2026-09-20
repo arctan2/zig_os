@@ -224,7 +224,8 @@ pub const File = struct {
 
 pub const FileFlags = packed struct {
     is_dir: u1 = 0,
-    w: u1 = 1,
+    r: u1 = 0,
+    w: u1 = 0,
     x: u1 = 0
 };
 
@@ -250,10 +251,11 @@ pub const INodeOpsError = error {
 const LookupError = error{ OutOfMemory, DoesNotExist };
 const AttachError = error{ OutOfMemory, AlreadyExist };
 const CreateError = error{ OutOfMemory, AlreadyExist, InvalidFileName };
-const ResizeError = error{OutOfMemory, IsDir};
+const ResizeError = error{ OutOfMemory, IsDir};
 const RenameError = error{} || LookupError || CreateError;
-const ReadError = error{ IsDir, EOF };
+const ReadError = error{ IsDir, NoRead, EOF };
 const WriteError = error{ IsDir, NoWrite } || ResizeError;
+const ChmodError = error{ IsDir };
 
 pub const INodeOps = struct {
     lookup: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) LookupError!FsData,
@@ -263,6 +265,7 @@ pub const INodeOps = struct {
     destroy: *const fn(ptr: *anyopaque, inode: *Inode) void,
     resize: *const fn(ptr: *anyopaque, inode: *Inode, len: usize) ResizeError!void,
     stat: *const fn(ptr: *anyopaque, parent: *Inode, name: []const u8) Stat,
+    chmod: *const fn(ptr: *anyopaque, inode: *Inode, flags: FileFlags) ChmodError!void,
 };
 
 pub const FileOps = struct {
