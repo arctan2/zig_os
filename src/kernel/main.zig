@@ -12,6 +12,7 @@ const scheduler = @import("scheduler.zig");
 const syscall = @import("syscall");
 const vfs = @import("vfs");
 const fs = @import("fs");
+const binfmt = @import("binfmt");
 pub const ih = @import("interrupt_handlers.zig");
 
 pub const std_options: std.Options = .{
@@ -25,11 +26,19 @@ pub const os = struct {
     };
 };
 
-fn initProcess() !void {
-    const f = vfs.open(mm.kalloc, "/initramfs/bin/init", .{}) catch @panic("error while open file");
-    defer vfs.close(mm.kalloc, f);
+fn initProcess(allocator: std.mem.Allocator, kernel_l1: *mm.page_table.L1PageTable) !void {
+    const f = vfs.open(allocator, "/initramfs/bin/init", .{ .read = 1 }) catch @panic("error while open file");
+    defer vfs.close(allocator, f);
+
     const stat = try vfs.stat(f);
     uart.print("stat = {c}\n", .{stat});
+
+    var elf = try binfmt.elf.init(allocator, f);
+    defer elf.deinit(allocator);
+    uart.print("{}\n", .{elf.header.*});
+
+    const task = scheduler.Task.allocTask(mm.kalloc, kernel_l1) catch @panic("out of memory");
+    elf.loadSegments(task.vma);
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
@@ -45,7 +54,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     const kbounds = kglobal.KernelBounds.init(mem.start, mem.size);
     kbounds.print();
     mm.mapFreePagesToKernelL1(&kbounds, &kaddr_space) catch @panic("error in mapFreePagesToKernelL1");
-    kaddr_space.mapAddr(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }) catch unreachable;
+    kaddr_space.mapAddr(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }, .KernelRO) catch unreachable;
     mm.unmapIdentityKernel(&kbounds, &kaddr_space);
 
     const initramfs_img = kglobal.getInitRamfs(&kbounds);
@@ -60,7 +69,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
         @panic("fs already exists on that name. Unmount it first.");
     };
 
-    initProcess() catch @panic("error in init process");
+    // initProcess(mm.kalloc, kaddr_space.l1) catch @panic("error in init process");
 
     // var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
     // var another_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");

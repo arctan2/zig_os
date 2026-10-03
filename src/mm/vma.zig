@@ -58,12 +58,17 @@ pub const VirtAddrSpace = struct {
         };
     }
 
+    pub fn deinit(self: *VirtAddrSpace, allocator: std.mem.Allocator) void {
+        self.vma_rbtree.deinit(allocator);
+        self.l1.deinit();
+    }
+
     // for these to work properly the page allocator base address must be aligned to 1MB.
     // It only maps the virt to phys. So phys should be a valid page start address and it is
     // the responsibility of the caller.
     // IT DOES NOT DO ALLOCATIONS FOR THE ACTUAL PAGES. IT IS DONE BY THE CALLER
     // It only does allocations for the page table itself.
-    pub fn mapAddr(self: *VirtAddrSpace, virt: usize, phys: usize, flags: MapFlags) !void {
+    pub fn mapAddr(self: *VirtAddrSpace, virt: usize, phys: usize, flags: MapFlags, perm: page_table.Permissions) !void {
         const virt_addr: VirtAddress = @bitCast(virt);
         const entry_type = self.l1.getEntryType(virt_addr.l1_idx);
 
@@ -82,6 +87,7 @@ pub const VirtAddrSpace = struct {
                     const entry = self.l1.getEntryAs(page_table.SectionEntry, virt_addr.l1_idx);
                     entry.section_addr = @intCast(phys >> 20);
                     entry.type = .Section;
+                    entry.setPermissions(perm);
                 }
             },
             .L2TablePtr => {
@@ -213,7 +219,7 @@ test "alloc and dealloc ~1GB l1 entries" {
         try mem.mapAddr(cur, page_alloc.pageToPhys(block), .{ .type = .Section });
     }
 
-    mem.l1.drop();
+    mem.l1.deinit();
 
     for (0..(page_alloc.MAX_ORDER - 1)) |i| try std.testing.expect(page_alloc.global_page_alloc.free_list[i] == null);
     try std.testing.expect(page_alloc.global_page_alloc.getFreeListLen(270000, page_alloc.MAX_ORDER - 1) == g.last_order_chunks_count);
@@ -252,7 +258,7 @@ test "map and unmap few individual pages" {
     page_alloc.freeAddr(l2_table_phys_addr);
     page_alloc.freeAddr(@intFromPtr(mem.l1));
 
-    mem.l1.drop();
+    mem.l1.deinit();
 
     for (0..(page_alloc.MAX_ORDER - 1)) |i| try std.testing.expect(page_alloc.global_page_alloc.free_list[i] == null);
     try std.testing.expect(page_alloc.global_page_alloc.getFreeListLen(270000, page_alloc.MAX_ORDER - 1) == g.last_order_chunks_count);
@@ -276,7 +282,7 @@ test "mmap: basic insert with no neighbors" {
     var mem = try VirtAddrSpace.init(&l1);
 
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     const vma = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);
 
@@ -298,7 +304,7 @@ test "mmap: zero size returns error" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     try std.testing.expectError(error.InvalidSize, mem.mmap(allocator, 0x1000, 0, .heap, null));
     try mem.vma_rbtree.deinit(allocator);
@@ -313,7 +319,7 @@ test "mmap: start+size overflow returns error" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     try std.testing.expectError(error.InvalidRange, mem.mmap(allocator, std.math.maxInt(usize) - 0x10, 0x1000, .heap, null));
     try mem.vma_rbtree.deinit(allocator);
@@ -328,7 +334,7 @@ test "mmap: overlap with existing vma returns error" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     _ = try mem.mmap(allocator, 0x1000, 0x2000, .heap, null); // [0x1000, 0x3000)
 
@@ -353,7 +359,7 @@ test "mmap: merges with left neighbor of same type and file" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     const first = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null); // [0x1000, 0x2000)
     const merged = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null); // [0x2000, 0x3000)
@@ -376,7 +382,7 @@ test "mmap: merges with right neighbor of same type and file" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     const right = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null); // [0x2000, 0x3000)
     const merged = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null); // [0x1000, 0x2000)
@@ -399,7 +405,7 @@ test "mmap: merges with both neighbors when bridging a gap" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     const left = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);  // [0x1000, 0x2000)
     _ = try mem.mmap(allocator, 0x3000, 0x1000, .heap, null);           // [0x3000, 0x4000)
@@ -427,7 +433,7 @@ test "mmap: does not merge across different alloc types" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     _ = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);     // [0x1000, 0x2000)
     const second = try mem.mmap(allocator, 0x2000, 0x1000, .stack, null); // adjacent but different type
@@ -449,7 +455,7 @@ test "mmap: does not merge across different files" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     var file_a: fs.File = undefined;
     var file_b: fs.File = undefined;
@@ -474,7 +480,7 @@ test "mmap: inserting between two disjoint non-adjacent vmas" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     const left = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);  // [0x1000, 0x2000)
     const right = try mem.mmap(allocator, 0x4000, 0x1000, .heap, null); // [0x4000, 0x5000), gap before it
@@ -501,7 +507,7 @@ test "mmap: multiple mmaps fully merge into a single vma" {
     var l1: page_table.L1PageTable = .{ .entries = arr };
     var mem = try VirtAddrSpace.init(&l1);
     defer freeAllVmas(allocator, &mem);
-    defer mem.l1.drop();
+    defer mem.l1.deinit();
 
     var last: *VirtAllocation = undefined;
     for (0..10) |i| {

@@ -16,7 +16,7 @@ var mmio_mapper = struct {
 
 pub fn init(kaddr_space: *mm.vma.VirtAddrSpace, fdt_base: [*]const u8) void {
     const UART_BASE = mmio_mapper.nextAddr();
-    kaddr_space.mapAddr(UART_BASE, uart.getUartBase(), .{ .type = .Section }) catch unreachable;
+    kaddr_space.mapAddr(UART_BASE, uart.getUartBase(), .{ .type = .Section }, .KernelRW) catch unreachable;
     uart.setBase(UART_BASE);
 
     initGicv2(kaddr_space, fdt_base);
@@ -40,7 +40,7 @@ fn initGicv2(kaddr_space: *mm.vma.VirtAddrSpace, fdt_base: [*]const u8) void {
     const distr_size = fdt.readRegFromCells(addr_size_cells, reg.data, 1);
     const cpu_iface_start = fdt.readRegFromCells(addr_size_cells, reg.data, 2);
 
-    kaddr_space.mapAddr(GIC_BASE, @min(distr_start, cpu_iface_start), .{ .type = .Section }) catch unreachable;
+    kaddr_space.mapAddr(GIC_BASE, @min(distr_start, cpu_iface_start), .{ .type = .Section }, .KernelRW) catch unreachable;
 
     gicv2.D.setBase(GIC_BASE);
     gicv2.C.setBase(GIC_BASE + distr_size);

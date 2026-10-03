@@ -168,6 +168,20 @@ pub fn build(b: *std.Build) void {
         }
     });
 
+    const binfmt = b.createModule(.{
+        .root_source_file = b.path("src/binfmt/binfmt.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+            .{.name = "fs", .module = fs},
+            .{.name = "vfs", .module = vfs},
+            .{.name = "lib", .module = lib},
+            .{.name = "mm", .module = mm},
+        }
+    });
+
     const syscall = b.createModule(.{
         .root_source_file = b.path("src/kernel/syscall/syscall.zig"),
         .target = target,
@@ -197,6 +211,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "vfs", .module = vfs},
             .{.name = "fs", .module = fs},
             .{.name = "lib", .module = lib},
+            .{.name = "binfmt", .module = binfmt},
         }
     });
 

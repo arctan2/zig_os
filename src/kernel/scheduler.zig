@@ -55,10 +55,11 @@ pub fn TaskInfo(comptime SchedState: type) type {
             };
         }
 
-        pub fn allocTask(gpa: std.mem.Allocator) !*T {
-            const task = try gpa.create(T);
+        pub fn allocTask(allocator: std.mem.Allocator, kernel_l1: *mm.page_table.L1PageTable) !*T {
+            const task = try allocator.create(T);
             const id: usize = TASK_ID_COUNTER;
             task.* = T.default();
+            task.vma = .init(kernel_l1);
             TASK_ID_COUNTER += 1;
             task.id = id;
             return task;

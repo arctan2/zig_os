@@ -80,7 +80,7 @@ jump_to_kernel_main: @ r0 = fdt_virt, r1 = _stack_top, r2 = entry
 	isb
 	mov pc, r3
 
-l1_zero_init:
+l1_zero_init: @r0 = _kernel_l1_page_table_phys
 	push {lr}
 
 	mov r1, #0
@@ -89,7 +89,7 @@ l1_zero_init:
 	l1_zero_init_loop:
 		cmp r1, #4096
 		beq l1_zero_init_loop_end
-		str r2, [r0, r1, LSL #2]
+		str r2, [r0, r1, LSL #2] // basically r0[r1 * 4] = r2
 		add r1, r1, #1
 		b l1_zero_init_loop
 	l1_zero_init_loop_end:
@@ -137,11 +137,11 @@ setup_l1:
 kernel_map_section: @ r0 = l1, r1 = virt, r2 = phys
 	push {r0-r4, lr}
 
-	mov r1, r1, LSR #20 @ l1_idx
+	mov r1, r1, LSR #20 // l1_idx
 	ldr r3, =0xfff00000
 	and r2, r2, r3
 	add r2, r2, #2
-	str r2, [r0, r1, LSL #2] @ l1[l1_idx] = r2
+	str r2, [r0, r1, LSL #2] // l1[l1_idx] = r2
 
 	pop {r0-r4, pc}
 	bx lr

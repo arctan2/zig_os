@@ -18,9 +18,9 @@ fn insertToRamfs(ramfs: *Ramfs, entry: *const cpio.Entry, filename: []const u8) 
 
     const mode_int = cpio.toU64(&entry.header.mode) catch return;
     const is_dir: u1 = if((mode_int & @as(u64, 0xF000)) == 0x4000) 1 else 0;
-    const owner = (mode_int & 0o700) >> 6; 
-    const can_read: u1 = @truncate(owner & 4);
-    const can_write: u1 = @truncate(owner & 2);
+    const owner = (mode_int >> 6) & 0o7;
+    const can_read: u1 = @truncate((owner >> 2) & 1);
+    const can_write: u1 = @truncate((owner >> 1) & 1);
     const can_execute: u1 = @truncate(owner & 1);
 
     while(parts.next()) |part| {

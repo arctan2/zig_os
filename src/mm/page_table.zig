@@ -9,6 +9,13 @@ const L1EntryType = enum(u2) {
     Section = 0b10
 };
 
+pub const Permissions = enum {
+    KernelRW,
+    KernelRO,
+    UserRW,
+    UserRO,
+};
+
 pub const SectionEntry = packed struct(usize) {
     type: L1EntryType,
     b: u1,
@@ -32,6 +39,18 @@ pub const SectionEntry = packed struct(usize) {
     pub inline fn free(self: *SectionEntry) void {
         page_alloc.freeAddr(self.addr());
     }
+
+    pub fn setPermissions(entry: *SectionEntry, perm: Permissions) void {
+        const encoded: u3 = switch (perm) {
+            .KernelRW => 0b001,
+            .KernelRO => 0b101,
+            .UserRW   => 0b011,
+            .UserRO   => 0b110,
+        };
+
+        entry.apx = @truncate(encoded >> 2);
+        entry.ap = @truncate(encoded);
+    }
 };
 
 pub const L2TableAddr = packed struct(usize) {
@@ -50,7 +69,7 @@ pub const L2TableAddr = packed struct(usize) {
     }
 
     pub inline fn free(self: *L2TableAddr) void {
-        self.toTable().drop();
+        self.toTable().deinit();
     }
 };
 
@@ -77,18 +96,20 @@ pub const L1PageTable = struct {
     }
 
     pub fn freeEntries(self: *L1PageTable) void {
-        for(0..self.entries.len) |i| {
-            const idx: usize = @intCast(i);
-            switch(self.getEntryType(idx)) {
-                .Section => self.getEntryAs(SectionEntry, idx).free(),
-                .L2TablePtr => self.getEntryAs(L2TableAddr, idx).free(),
-                else => {}
+        const kernel_start = (kglobal.VIRT_BASE - 0x00100000) >> 20;
+
+        for (0..kernel_start) |i| {
+            switch (self.getEntryType(i)) {
+                .Section => self.getEntryAs(SectionEntry, i).free(),
+                .L2TablePtr => self.getEntryAs(L2TableAddr, i).free(),
+                else => {},
             }
+
             self.entries[i] = 0;
         }
     }
 
-    pub fn drop(self: *L1PageTable) void {
+    pub fn deinit(self: *L1PageTable) void {
         self.freeEntries();
         self.free();
     }
@@ -98,8 +119,9 @@ pub const L1PageTable = struct {
         var i: usize = 0;
         while(i < self.entries.len) : (i += 1) {
             const e = self.entries[i];
+            const entry = self.getEntryAs(SectionEntry, i);
             if(e != 0) {
-                uart.print("{}({x}): {b} ({x})\n", .{i, i, e, e});
+                uart.print("{}({x}): {b} ({x}) perm: {b} {b}\n", .{i, i, e, e, entry.apx, entry.ap});
             }
         }
         uart.print("--------L1 TABLE END----------\n", void);
@@ -164,7 +186,7 @@ pub const L2PageTable = struct {
         return @ptrCast(@alignCast(&self.entries[idx]));
     }
 
-    pub inline fn drop(self: *L2PageTable) void {
+    pub inline fn deinit(self: *L2PageTable) void {
         self.freeEntries();
         self.free();
     }

@@ -19,7 +19,7 @@ pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kaddr_space:
     
     var cur = std.mem.alignForward(usize, high_kernel_start, page_alloc.SECTION_SIZE);
     while(cur < mem_end) {
-        try kaddr_space.mapAddr(cur + @intFromPtr(&kglobal.KERNEL_OFFSET), cur, .{ .type = .Section });
+        try kaddr_space.mapAddr(cur + @intFromPtr(&kglobal.KERNEL_OFFSET), cur, .{ .type = .Section }, .KernelRW);
         cur += page_alloc.SECTION_SIZE;
     }
 }
