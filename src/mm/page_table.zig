@@ -32,8 +32,10 @@ pub const SectionEntry = packed struct(usize) {
     sbz: u1,
     section_addr: u12,
 
+    pub const ADDR_SHIFT = 20;
+
     pub inline fn addr(self: *const SectionEntry) usize {
-        return @as(usize, self.section_addr) << 20;
+        return @as(usize, self.section_addr) << ADDR_SHIFT;
     }
 
     pub inline fn free(self: *SectionEntry) void {
@@ -78,7 +80,9 @@ pub const L1PageTable = struct {
 
     pub fn init(kernel_l1: *L1PageTable) !*L1PageTable {
         const self_page = try page_alloc.allocPages(4);
-        const self: *L1PageTable = @ptrFromInt(page_alloc.pageToPhys(self_page));
+        const physAddr = page_alloc.pageToPhys(self_page);
+        const virtAddr = kglobal.physToVirtByVirtOffset(physAddr);
+        const self: *L1PageTable = @ptrFromInt(virtAddr);
         @memcpy(&self.entries, &kernel_l1.entries);
         return self;
     }
@@ -96,7 +100,7 @@ pub const L1PageTable = struct {
     }
 
     pub fn freeEntries(self: *L1PageTable) void {
-        const kernel_start = (kglobal.VIRT_BASE - 0x00100000) >> 20;
+        const kernel_start = kglobal.getEarlyKernelStartVirt();
 
         for (0..kernel_start) |i| {
             switch (self.getEntryType(i)) {

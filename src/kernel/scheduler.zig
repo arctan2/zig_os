@@ -59,7 +59,7 @@ pub fn TaskInfo(comptime SchedState: type) type {
             const task = try allocator.create(T);
             const id: usize = TASK_ID_COUNTER;
             task.* = T.default();
-            task.vma = .init(kernel_l1);
+            task.vma = try .init(kernel_l1);
             TASK_ID_COUNTER += 1;
             task.id = id;
             return task;
@@ -94,8 +94,8 @@ pub var global = Scheduler{
     .current_task = &idle_task
 };
 
-pub fn init(kaddr_space: mm.vma.VirtAddrSpace) void {
-    idle_task.vma = kaddr_space;
+pub fn init(kvma: mm.vma.VirtAddrSpace) void {
+    idle_task.vma = kvma;
     idle_task.cpu_state = .{
         .lr = 0,
         .sp = @intFromPtr(&mm.kglobal._vstack_top),

@@ -88,6 +88,10 @@ comptime {
     }
 }
 
+pub inline fn getEarlyKernelStartVirt() usize {
+    return (@intFromPtr(&VIRT_BASE) - 0x00100000) >> 20; // SectionEntry.ADDR_SHIFT
+}
+
 pub inline fn physToVirtByKernelOffset(phys: usize) usize {
     if (builtin.is_test) {
         return phys;

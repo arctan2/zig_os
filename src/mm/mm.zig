@@ -13,20 +13,39 @@ var gpa_allocator = gpa.DebugAllocator(.{ .safety = false, .MutexType = atomic.S
 };
 pub const kalloc = gpa_allocator.allocator();
 
-pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kaddr_space: *vma.VirtAddrSpace) !void {
+pub fn mapFreePagesToKernelL1(kbounds: *const kglobal.KernelBounds, kvma: *vma.VirtAddrSpace) !void {
     const high_kernel_start = @intFromPtr(&kglobal._early_kernel_start);
     const mem_end = kbounds.free_region_start + kbounds.free_region_size;
     
     var cur = std.mem.alignForward(usize, high_kernel_start, page_alloc.SECTION_SIZE);
     while(cur < mem_end) {
-        try kaddr_space.mapAddr(cur + @intFromPtr(&kglobal.KERNEL_OFFSET), cur, .{ .type = .Section }, .KernelRW);
+        try kvma.mapAddr(cur + @intFromPtr(&kglobal.KERNEL_OFFSET), cur, .{ .type = .Section }, .KernelRW);
         cur += page_alloc.SECTION_SIZE;
     }
 }
 
-pub fn unmapIdentityKernel(kbounds: *const kglobal.KernelBounds, kaddr_space: *vma.VirtAddrSpace) void {
+pub fn setKernelTextPermissions(kbounds: *const kglobal.KernelBounds, kvma: *vma.VirtAddrSpace, fdt_base: usize) void {
+    const total_pages = @divTrunc(kbounds.free_region_size, page_alloc.PAGE_SIZE);
+    const pages_meta_data_size_bytes = total_pages * @sizeOf(page_alloc.Page);
+    const pages_meta_end = std.mem.alignForward(
+        usize, kglobal.physToVirtByKernelOffset(kbounds.free_region_start) + pages_meta_data_size_bytes + kbounds.kernel_size_phys, page_alloc.SECTION_SIZE
+    );
+    const start = kglobal.getEarlyKernelStartVirt();
+    const end = pages_meta_end >> 20;
+
+    kvma.l1
+        .getEntryAs(page_table.SectionEntry, fdt_base >> page_table.SectionEntry.ADDR_SHIFT)
+        .setPermissions(.KernelRW);
+
+    for(start..end + 1) |i| {
+        const entry = kvma.l1.getEntryAs(page_table.SectionEntry, i);
+        entry.setPermissions(.KernelRW);
+    }
+}
+
+pub fn unmapIdentityKernel(kbounds: *const kglobal.KernelBounds, kvma: *vma.VirtAddrSpace) void {
     const addr = kbounds.kernel_start_phys;
-    kaddr_space.unmapAddr(addr);
+    kvma.unmapAddr(addr);
 }
 
 comptime {

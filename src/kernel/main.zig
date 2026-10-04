@@ -38,7 +38,8 @@ fn initProcess(allocator: std.mem.Allocator, kernel_l1: *mm.page_table.L1PageTab
     uart.print("{}\n", .{elf.header.*});
 
     const task = scheduler.Task.allocTask(mm.kalloc, kernel_l1) catch @panic("out of memory");
-    elf.loadSegments(task.vma);
+    // elf.loadSegments(task.vma);
+    task.vma.l1.print();
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
@@ -46,30 +47,33 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
 
-    var kaddr_space = mm.vma.VirtAddrSpace{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
+    var kvma = mm.vma.VirtAddrSpace{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
     uart.setBase(0x09000000);
-    mmio.init(&kaddr_space, fdt_base);
+    mmio.init(&kvma, fdt_base);
+
+    uart.print("fdt_base_virt = {x}\n", .{@intFromPtr(fdt_base)});
 
     const mem = fdt.getMemStartSize(fdt_base);
     const kbounds = kglobal.KernelBounds.init(mem.start, mem.size);
     kbounds.print();
-    mm.mapFreePagesToKernelL1(&kbounds, &kaddr_space) catch @panic("error in mapFreePagesToKernelL1");
-    kaddr_space.mapAddr(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }, .KernelRO) catch unreachable;
-    mm.unmapIdentityKernel(&kbounds, &kaddr_space);
+    mm.mapFreePagesToKernelL1(&kbounds, &kvma) catch @panic("error in mapFreePagesToKernelL1");
+    mm.setKernelTextPermissions(&kbounds, &kvma, @intFromPtr(fdt_base));
+    kvma.mapAddr(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }, .KernelRO) catch unreachable;
+    mm.unmapIdentityKernel(&kbounds, &kvma);
 
     const initramfs_img = kglobal.getInitRamfs(&kbounds);
     
     mm.page_alloc.initGlobal(kbounds.free_region_start, kbounds.free_region_size, kglobal.VIRT_OFFSET);
     initStacks();
 
-    scheduler.init(kaddr_space);
+    scheduler.init(kvma);
 
     const initramfs_ctx = fs.InitRamFs.init(mm.kalloc, initramfs_img) catch @panic("out of mem");
     vfs.dock(mm.kalloc, "initramfs", fs.InitRamFs.fs_ops, initramfs_ctx, .Ram) catch {
         @panic("fs already exists on that name. Unmount it first.");
     };
 
-    // initProcess(mm.kalloc, kaddr_space.l1) catch @panic("error in init process");
+    initProcess(mm.kalloc, kvma.l1) catch @panic("error in init process");
 
     // var cool_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
     // var another_task = scheduler.Task.allocTask(mm.kalloc) catch @panic("out of memory");
