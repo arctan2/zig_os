@@ -3,7 +3,7 @@ const uart = @import("uart");
 const arm = @import("arm");
 const mmio = @import("mmio");
 const gicv2 = mmio.gicv2;
-const scheduler = @import("scheduler.zig");
+const scheduler = @import("scheduler");
 const timers = @import("devices").timers;
 
 pub export fn reset_handler() void {

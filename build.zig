@@ -112,6 +112,18 @@ pub fn build(b: *std.Build) void {
         }
     });
 
+    const fs = b.createModule(.{
+        .root_source_file = b.path("src/fs/fs.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+            .{.name = "atomic", .module = atomic},
+            .{.name = "lib", .module = lib},
+        }
+    });
+
     const mm = b.createModule(.{
         .root_source_file = b.path("src/mm/mm.zig"),
         .target = target,
@@ -123,6 +135,7 @@ pub fn build(b: *std.Build) void {
             .{.name = "fdt", .module = fdt},
             .{.name = "atomic", .module = atomic},
             .{.name = "lib", .module = lib},
+            .{.name = "fs", .module = fs},
         }
     });
 
@@ -141,18 +154,6 @@ pub fn build(b: *std.Build) void {
             .{.name = "arm", .module = arm},
             .{.name = "fdt", .module = fdt},
             .{.name = "mmio", .module = mmio},
-        }
-    });
-
-    const fs = b.createModule(.{
-        .root_source_file = b.path("src/fs/fs.zig"),
-        .target = target,
-        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
-        .imports = &.{
-            .{.name = "utils", .module = utils},
-            .{.name = "uart", .module = uart},
-            .{.name = "atomic", .module = atomic},
-            .{.name = "lib", .module = lib},
         }
     });
 
@@ -179,6 +180,33 @@ pub fn build(b: *std.Build) void {
             .{.name = "vfs", .module = vfs},
             .{.name = "lib", .module = lib},
             .{.name = "mm", .module = mm},
+        }
+    });
+
+    const scheduler = b.createModule(.{
+        .root_source_file = b.path("src/kernel/scheduler.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "utils", .module = utils},
+            .{.name = "uart", .module = uart},
+            .{.name = "lib", .module = lib},
+            .{.name = "mm", .module = mm},
+            .{.name = "arm", .module = arm},
+        }
+    });
+
+    const process = b.createModule(.{
+        .root_source_file = b.path("src/kernel/process.zig"),
+        .target = target,
+        .optimize = if(isDebugModeOptimize) .Debug else .ReleaseSafe,
+        .imports = &.{
+            .{.name = "uart", .module = uart},
+            .{.name = "mm", .module = mm},
+            .{.name = "vfs", .module = vfs},
+            .{.name = "fs", .module = fs},
+            .{.name = "binfmt", .module = binfmt},
+            .{.name = "scheduler", .module = scheduler},
         }
     });
 
@@ -212,6 +240,8 @@ pub fn build(b: *std.Build) void {
             .{.name = "fs", .module = fs},
             .{.name = "lib", .module = lib},
             .{.name = "binfmt", .module = binfmt},
+            .{.name = "process", .module = process},
+            .{.name = "scheduler", .module = scheduler},
         }
     });
 

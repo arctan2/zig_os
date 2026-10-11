@@ -8,11 +8,12 @@ const utils = @import("utils");
 const mmio = @import("mmio");
 const devices = @import("devices");
 const interrupts = @import("interrupts.zig");
-const scheduler = @import("scheduler.zig");
+const scheduler = @import("scheduler");
 const syscall = @import("syscall");
 const vfs = @import("vfs");
 const fs = @import("fs");
 const binfmt = @import("binfmt");
+const process = @import("process");
 pub const ih = @import("interrupt_handlers.zig");
 
 pub const std_options: std.Options = .{
@@ -27,19 +28,8 @@ pub const os = struct {
 };
 
 fn initProcess(allocator: std.mem.Allocator, kernel_l1: *mm.page_table.L1PageTable) !void {
-    const f = vfs.open(allocator, "/initramfs/bin/init", .{ .read = 1 }) catch @panic("error while open file");
-    defer vfs.close(allocator, f);
-
-    const stat = try vfs.stat(f);
-    uart.print("stat = {c}\n", .{stat});
-
-    var elf = try binfmt.elf.init(allocator, f);
-    defer elf.deinit(allocator);
-    uart.print("{}\n", .{elf.header.*});
-
-    const task = scheduler.Task.allocTask(mm.kalloc, kernel_l1) catch @panic("out of memory");
-    // elf.loadSegments(task.vma);
-    task.vma.l1.print();
+    const proc = try process.createElf(allocator, "/initramfs/bin/init", kernel_l1);
+    scheduler.add(proc);
 }
 
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
@@ -56,6 +46,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
     const mem = fdt.getMemStartSize(fdt_base);
     const kbounds = kglobal.KernelBounds.init(mem.start, mem.size);
     kbounds.print();
+
     mm.mapFreePagesToKernelL1(&kbounds, &kvma) catch @panic("error in mapFreePagesToKernelL1");
     mm.setKernelTextPermissions(&kbounds, &kvma, @intFromPtr(fdt_base));
     kvma.mapAddr(kglobal.VECTOR_TABLE_BASE, @intFromPtr(&kglobal._early_kernel_end), .{ .type = .Section }, .KernelRO) catch unreachable;

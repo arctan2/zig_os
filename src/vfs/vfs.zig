@@ -370,6 +370,11 @@ pub fn read(f: *fs.File, buf: []u8) !usize {
     return count;
 }
 
+pub fn readAt(f: *fs.File, offset: usize, buf: []u8) !usize {
+    f.offset = offset;
+    return read(f, buf);
+}
+
 pub fn write(f: *fs.File, buf: []const u8) !usize {
     const dentry = f.dentry;
     const inode = dentry.inode orelse return error.InvalidFile;

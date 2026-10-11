@@ -131,7 +131,8 @@ pub const VirtAddrSpace = struct {
         start: usize,
         size: usize,
         alloc_type: VirtAllocation.Type,
-        file: ?*fs.File
+        file: ?*fs.File,
+        file_off: usize
     ) !*VirtAllocation {
         if(size == 0) return error.InvalidSize;
         const end = std.math.add(usize, start, size) catch return error.InvalidRange;
@@ -181,7 +182,7 @@ pub const VirtAddrSpace = struct {
             .start = start,
             .size = size,
             .file = file,
-            .file_off = 0,
+            .file_off = file_off,
             .list_node = .{
                 .prev = null,
                 .next = null,
