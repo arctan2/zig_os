@@ -51,10 +51,13 @@ pub const VirtAddrSpace = struct {
     vma_list: lib.list.DoubleLinkedList(VirtAllocationNode) = .{},
     vma_rbtree: lib.RBTree(usize, *VirtAllocation, void, VirtAllocation.cmpFn) = .init({}),
     l1: *page_table.L1PageTable,
+    l1_phys: usize,
 
     pub fn init(kernel_l1: *page_table.L1PageTable) !VirtAddrSpace {
+        const l1: *page_table.L1PageTable = try .init(kernel_l1);
         return .{
-            .l1 = try .init(kernel_l1),
+            .l1 = l1,
+            .l1_phys = kglobal.virtToPhysByKernelOffset(@intFromPtr(l1))
         };
     }
 
@@ -77,9 +80,10 @@ pub const VirtAddrSpace = struct {
                 if (flags.type == .L2) {
                     const l1_entry = self.l1.getEntryAs(page_table.L2TableAddr, virt_addr.l1_idx);
                     const l2_table = try page_table.L2PageTable.init();
+                    const l2_table_phys = l2_table.getPhysAddr();
                     const l2_entry = l2_table.getEntryAs(page_table.SmallPage, virt_addr.l2_idx);
 
-                    l1_entry.l2_addr = @intCast(@intFromPtr(l2_table) >> 10);
+                    l1_entry.l2_addr = @intCast(l2_table_phys >> 10);
                     l1_entry.type = .L2TablePtr;
                     l2_entry.phys_addr = @intCast(phys >> 12);
                     l2_entry.type = .SmallPage;

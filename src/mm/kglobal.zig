@@ -3,7 +3,6 @@ const builtin = @import("builtin");
 const uart = @import("uart");
 const page_alloc = @import("page_alloc.zig");
 
-pub var VIRT_OFFSET: usize = 0;
 pub const MMIO_BASE = 0xF0000000;
 pub const VECTOR_TABLE_BASE: usize = 0xFFF00000;
 
@@ -104,18 +103,4 @@ pub inline fn virtToPhysByKernelOffset(virt: usize) usize {
         return virt;
     }
     return virt - @intFromPtr(&KERNEL_OFFSET);
-}
-
-pub inline fn physToVirtByVirtOffset(phys: usize) usize {
-    if (builtin.is_test) {
-        return phys;
-    }
-    return phys + VIRT_OFFSET;
-}
-
-pub inline fn virtToPhysByVirtOffset(virt: usize) usize {
-    if (builtin.is_test) {
-        return virt;
-    }
-    return virt - VIRT_OFFSET;
 }

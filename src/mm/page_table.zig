@@ -67,7 +67,7 @@ pub const L2TableAddr = packed struct(usize) {
     }
 
     pub inline fn toTable(self: *const L2TableAddr) *L2PageTable {
-        return @ptrFromInt(self.addr());
+        return physToL2Virt(self.addr());
     }
 
     pub inline fn free(self: *L2TableAddr) void {
@@ -81,7 +81,7 @@ pub const L1PageTable = struct {
     pub fn init(kernel_l1: *L1PageTable) !*L1PageTable {
         const self_page = try page_alloc.allocPages(4);
         const physAddr = page_alloc.pageToPhys(self_page);
-        const virtAddr = kglobal.physToVirtByVirtOffset(physAddr);
+        const virtAddr = kglobal.physToVirtByKernelOffset(physAddr);
         const self: *L1PageTable = @ptrFromInt(virtAddr);
         @memcpy(&self.entries, &kernel_l1.entries);
         return self;
@@ -96,7 +96,7 @@ pub const L1PageTable = struct {
     }
 
     pub fn free(self: *L1PageTable) void {
-        page_alloc.freeAddr(@intFromPtr(self));
+        page_alloc.freeAddr(kglobal.virtToPhysByKernelOffset(@intFromPtr(self)));
     }
 
     pub fn freeEntries(self: *L1PageTable) void {
@@ -177,7 +177,8 @@ pub const L2PageTable = struct {
 
     pub fn init() !*L2PageTable {
         const self_page = try page_alloc.allocPages(1);
-        const self: *L2PageTable = @ptrFromInt(page_alloc.pageToPhys(self_page));
+        const physAddr = page_alloc.pageToPhys(self_page);
+        const self = physToL2Virt(physAddr);
         @memset(&self.entries, 0);
         return self;
     }
@@ -190,13 +191,17 @@ pub const L2PageTable = struct {
         return @ptrCast(@alignCast(&self.entries[idx]));
     }
 
+    pub inline fn getPhysAddr(self: *L2PageTable) usize {
+        return kglobal.virtToPhysByKernelOffset(@intFromPtr(self));
+    }
+
     pub inline fn deinit(self: *L2PageTable) void {
         self.freeEntries();
         self.free();
     }
     
     pub fn free(self: *L2PageTable) void {
-        page_alloc.freeAddr(@intFromPtr(self));
+        page_alloc.freeAddr(kglobal.virtToPhysByKernelOffset(@intFromPtr(self)));
     }
 
     pub fn freeEntries(self: *L2PageTable) void {

@@ -1,3 +1,6 @@
+/// ttbr1 = for kernel
+/// ttbr0 = for user
+
 pub const TTBCR = packed struct(u32) {
     N: u3,
     not_used: u29,

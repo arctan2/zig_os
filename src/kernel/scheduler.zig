@@ -1,5 +1,6 @@
 const std = @import("std");
 const mm = @import("mm");
+const kglobal = mm.kglobal;
 const arm = @import("arm");
 const lib = @import("lib");
 const ListNode = lib.list.ListNode;
@@ -151,6 +152,7 @@ fn switchTo(task: *Task, prev_task_cpu_state: *CpuState) void {
     // uart.print("{x} != {x}\n", .{@intFromPtr(global.current_task.vma.l1), @intFromPtr(task.vma.l1)});
     if(@intFromPtr(global.current_task.vma.l1) != @intFromPtr(task.vma.l1)) {
         arm.invalidateTLBUnified();
+        arm.ttbr.write(0, task.vma.l1_phys);
     }
     global.current_task = task;
 }

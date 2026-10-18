@@ -35,9 +35,8 @@ fn initProcess(allocator: std.mem.Allocator, kernel_l1: *mm.page_table.L1PageTab
 pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".text") void {
     _ = ih.irq_handler;
 
-    kglobal.VIRT_OFFSET = @intFromPtr(&kglobal._vkernel_end) - @intFromPtr(&kglobal._early_kernel_end);
-
-    var kvma = mm.vma.VirtAddrSpace{ .l1 = mm.page_table.physToL1Virt(arm.ttbr.read(1)) };
+    const kernel_l1_phys = arm.ttbr.read(1);
+    var kvma = mm.vma.VirtAddrSpace{ .l1 = mm.page_table.physToL1Virt(kernel_l1_phys), .l1_phys = kernel_l1_phys };
     uart.setBase(0x09000000);
     mmio.init(&kvma, fdt_base);
 
@@ -54,7 +53,7 @@ pub export fn kernel_main(_: u32, _: u32, fdt_base: [*]const u8) linksection(".t
 
     const initramfs_img = kglobal.getInitRamfs(&kbounds);
     
-    mm.page_alloc.initGlobal(kbounds.free_region_start, kbounds.free_region_size, kglobal.VIRT_OFFSET);
+    mm.page_alloc.initGlobal(kbounds.free_region_start, kbounds.free_region_size, @intFromPtr(&kglobal.KERNEL_OFFSET));
     initStacks();
 
     scheduler.init(kvma);

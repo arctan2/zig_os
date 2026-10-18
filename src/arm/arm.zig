@@ -5,6 +5,10 @@ pub const generic_timer = @import("generic_timer.zig");
 pub const vbar = @import("vbar.zig");
 pub const isr = @import("isr.zig");
 pub const cpsr = @import("cpsr.zig");
+pub const ifsr = @import("ifsr.zig");
+pub const ifar = @import("ifar.zig");
+pub const dfsr = @import("dfsr.zig");
+pub const dfar = @import("dfar.zig");
 
 pub inline fn dsb() void {
     asm volatile ("dsb");

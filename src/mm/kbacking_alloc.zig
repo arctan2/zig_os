@@ -18,7 +18,7 @@ const BackingAllocator = struct {
         };
         const phys = page_alloc.pageToPhys(block);
 
-        return @ptrFromInt(kglobal.physToVirtByVirtOffset(phys));
+        return @ptrFromInt(kglobal.physToVirtByKernelOffset(phys));
     }
 
     fn resize(_: *anyopaque, _: []u8, _: Alignment, _: usize, _: usize) bool {
@@ -30,7 +30,7 @@ const BackingAllocator = struct {
     }
 
     fn free(_: *anyopaque, memory: []u8, _: Alignment, _: usize) void {
-        page_alloc.freeAddr(kglobal.virtToPhysByVirtOffset(@intFromPtr(memory.ptr)));
+        page_alloc.freeAddr(kglobal.virtToPhysByKernelOffset(@intFromPtr(memory.ptr)));
     }
 
     fn allocator(self: *BackingAllocator) Allocator {
