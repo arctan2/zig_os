@@ -2,15 +2,14 @@
 
 File: `src/kernel/main.zig`. Entry state is described in [boot.md](boot.md#register-state-on-entry-to-kernel_main).
 
-## 1. Offsets and the kernel address space
+## 1. The kernel address space
 
 ```zig
-kglobal.VIRT_OFFSET = &_vkernel_end - &_early_kernel_end;
-var kvma = VirtAddrSpace{ .l1 = physToL1Virt(arm.ttbr.read(1)) };
+const kernel_l1_phys = arm.ttbr.read(1);
+var kvma = VirtAddrSpace{ .l1 = physToL1Virt(kernel_l1_phys), .l1_phys = kernel_l1_phys };
 ```
 
-- `kvma.l1` points to the boot L1 through its high alias: `0x4000_8000 + KERNEL_OFFSET` = `0xC000_8000`. From here on, every page-table edit goes through `VirtAddrSpace.mapAddr` / `unmapAddr` (`mm/vma.zig`).
-- `VIRT_OFFSET` is used by the page allocator and the kernel heap to turn physical addresses into virtual ones. It is **not** the same as `KERNEL_OFFSET`; see [memory.md](memory.md#caveats).
+`kvma.l1` points to the boot L1 through its high alias: `0x4000_8000 + KERNEL_OFFSET` = `0xC000_8000`. From here on, every page-table edit goes through `VirtAddrSpace.mapAddr` / `unmapAddr` (`mm/vma.zig`). All phys ↔ virt conversions use `KERNEL_OFFSET` ([memory.md](memory.md#address-offset-helpers-mmkglobalzig)).
 
 ## 2. MMIO: `mmio.init(&kvma, fdt_base)`
 
@@ -48,7 +47,7 @@ This makes VA `0xC000_0000–0xE000_0000` a linear map of all RAM. `mapAddr` onl
 Sets **KernelRW** (APX:AP = `0:01`) on:
 
 - the FDT's section, and
-- L1 entries `0xC00` … `(pages_meta_end >> 20)`, where `pages_meta_end` = `align_1MiB(KERNEL_OFFSET + free_region_start + page_metadata_size + kernel_size_phys)`. This covers the kernel image and the page-allocator metadata that `initGlobal` writes later.
+- L1 entries `0xC00` … `(pages_meta_end >> 20)`, where `pages_meta_end` = `align_1MiB(KERNEL_OFFSET + free_region_start + page_metadata_size)` = `0xC050_0000`. This covers the kernel image and the page-allocator metadata that `initGlobal` writes later. Boot entries 0xC06–0xC08 are not covered and keep AP = 0 ([memory.md caveats](memory.md#caveats)).
 
 These are the boot entries that step 4 skipped. Nothing is made read-only or execute-never yet. Because DACR is Manager, AP bits are not enforced anyway ([boot.md caveats](boot.md#caveats)).
 
@@ -70,15 +69,15 @@ The ramdisk is linked into the kernel's `.data` section (`_binary_initramfs_img_
 
 The page allocator in step 9 hands out every page from `free_region_start` up, so before that runs, the cpio is copied to `alignBackward(mem_end - size, 1 MiB)` (currently PA `0x5FF0_0000`) through the linear map. That range is not removed from the allocator ([memory.md caveats](memory.md#caveats)).
 
-## 9. `mm.page_alloc.initGlobal(free_region_start, free_region_size, VIRT_OFFSET)`
+## 9. `mm.page_alloc.initGlobal(free_region_start, free_region_size, KERNEL_OFFSET)`
 
 This sets up a binary buddy allocator (`MAX_ORDER = 11`, so the largest block is 1024 pages = 4 MiB):
 
-- A `Page` metadata array (one per 4 KiB page of the free region) is placed at `free_region_start + VIRT_OFFSET`.
-- Allocatable memory starts at `base_addr = align_1MiB(free_region_start + metadata_size)`.
+- A `Page` metadata array (12 bytes per 4 KiB page of the free region) is placed at `free_region_start + KERNEL_OFFSET` = `0xC030_0000` (PA `0x4030_0000 – 0x4047_DC00`), directly after the kernel image.
+- Allocatable memory starts at `base_addr = align_1MiB(free_region_start + metadata_size)` = `0x4050_0000`.
 - All whole 4 MiB blocks are linked into `free_list[10]`.
 
-After this call, `mm.kalloc` works. It is a `std.heap.DebugAllocator` backed by `kbacking_alloc`, which allocates whole pages and returns `phys + VIRT_OFFSET`. Details: [memory.md](memory.md#allocators).
+After this call, `mm.kalloc` works. It is a `std.heap.DebugAllocator` backed by `kbacking_alloc`, which allocates whole pages and returns `phys + KERNEL_OFFSET`. Details: [memory.md](memory.md#allocators).
 
 ## 10. `initStacks`
 
@@ -104,19 +103,23 @@ vfs.dock(mm.kalloc, "initramfs", fs.InitRamFs.fs_ops, ctx, .Ram);
 - `InitRamFs.init` walks the newc cpio (`fs/cpio.zig`) until the `TRAILER!!!` entry. For each entry it creates the path's directories and the file in a `Ramfs` (`fs/ramfs.zig`), then applies the owner r/w/x bits from the cpio mode.
 - `vfs.dock` registers the filesystem under the name `initramfs`, so its root is reachable at `/initramfs/...`.
 
-## 13. `initProcess`
+## 13. `initProcess` → `process.createElf`
 
 ```zig
 f    = vfs.open(alloc, "/initramfs/bin/init", .{ .read = 1 });
-stat = vfs.stat(f);
-elf  = binfmt.elf.init(alloc, f);            // reads + validates ElfHeader
+elf  = binfmt.elf.init(alloc, f);                     // reads + validates ElfHeader
 task = scheduler.Task.allocTask(mm.kalloc, kernel_l1);
-task.vma.l1.print();
+elf.loadPTLoads(alloc, &task.vma);                    // one .segment VMA per PT_LOAD
+task.vma.mmap(alloc, 0xbfffffff, 64 KiB, .stack, null, 0);
+task.cpu_state = idle_task.cpu_state; task.cpu_state.pc = e_entry; task.priority = 30;
+scheduler.add(task);
 ```
 
-`allocTask` → `VirtAddrSpace.init` → `L1PageTable.init`. This allocates a 4-page (16 KiB) buddy block, which is naturally 16 KiB aligned as TTBR requires, and copies all 4096 kernel L1 entries into it.
+- `allocTask` → `VirtAddrSpace.init` → `L1PageTable.init`. This allocates a 4-page (16 KiB) buddy block, which is naturally 16 KiB aligned as TTBR requires, and copies all 4096 kernel L1 entries into it. `l1_phys` is its physical address.
+- `loadPTLoads` only records VMAs (`p_vaddr`, `p_memsz`, file, `p_offset`). No page tables are touched and nothing is read from the file.
+- The task's L1 is installed in TTBR0 by `scheduler.switchTo` the first time the task is scheduled.
 
-Current state: `elf.loadSegments` is commented out, the task is not added to the scheduler, and nothing writes its L1 to TTBR0/TTBR1. The init binary is parsed but not run.
+When the task first runs, `pc = e_entry` (`0x200ec`) is unmapped and every instruction page is demand-mapped by `pabort_handler` ([interrupts.md](interrupts.md#prefetch-abort-demand-paging)). The handler does not yet copy the ELF contents into the page, so the task runs zero-filled memory.
 
 The init binary (`ramdisk/init.zig`) is a naked `_start` that does `mov r0,#1; mov r1,#2; mov r7,#7; swi #0`, which is the EABI syscall convention (number in r7). `svc_handler` currently prints and hangs.
 

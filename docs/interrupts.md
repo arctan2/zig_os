@@ -11,7 +11,7 @@ Files: `src/asm/vector_table.S`, `src/kernel/interrupts.zig`, `src/kernel/interr
 | `0x00` | Reset | `_reset_handler` → `reset_handler` (print, hang) |
 | `0x04` | Undefined | `_undef_handler` → `undef_handler` (print, hang) |
 | `0x08` | SVC | `_svc_handler` → `svc_handler` (print, hang) |
-| `0x0C` | Prefetch abort | `_pabort_handler` → `pabort_handler` (print, hang) |
+| `0x0C` | Prefetch abort | `_pabort_handler` → `pabort_handler` (demand-map a page, return; see below) |
 | `0x10` | Data abort | `_dabort_handler` → `dabort_handler` (print, hang) |
 | `0x14` | — | `nop` |
 | `0x18` | IRQ | `_irq_handler` → `irq_handler` (see below) |
@@ -94,6 +94,25 @@ ldmia sp!, {r0-r12, pc}    @ pops the frame; SP ends at the task's original SP
 
 The exit path does not use `SUBS pc, lr` or `RFE`. If the target CPSR has I = 0, IRQs are unmasked before the `ldmia` completes.
 
+## Prefetch abort: demand paging
+
+`_pabort_handler` does `sub lr, lr, #4`, saves `r0-r12, lr`, calls `pabort_handler`, restores, and returns with `subs pc, lr, #0`. That retries the faulting instruction. For a prefetch abort, `LR_abt - 4` is the faulting instruction (ARM ARM B1.8.3).
+
+`pabort_handler`:
+
+1. `addr = IFAR` (`arm/ifar.zig`). The fault type is in IFSR (`arm/ifsr.zig`): `0b00101` = translation fault, section (no L1 entry), `0b00111` = translation fault, page (L2 table exists, no entry).
+2. `page = allocPages(1)` (panics `"memory full"` on failure).
+3. `current_task.vma.mapAddr(addr, pageToPhys(page), .L2, .UserRO)`, which creates the L2 table if needed.
+
+Current limitations:
+
+- The handler never looks up the task's VMAs. Any address gets a page, and nothing is reported as a segfault.
+- The page is not filled from the ELF file. Fresh QEMU RAM is zero, and `0x0000_0000` decodes as `andeq r0, r0, r0` (a no-op). So the init task executes 1024 no-ops per page, faults on the next page, and walks up through user space until memory runs out.
+- `var task_vma = cur_task.vma` copies the `VirtAddrSpace`. Page-table writes still land because `l1` is a pointer, but any change to the VMA list or tree would be lost.
+- `mapAddr` ignores `perm` for L2 pages, so the page gets AP = 0. This only works because DACR is Manager.
+
+`dabort_handler` prints DFAR/DFSR (`arm/dfar.zig`, `arm/dfsr.zig`) and hangs.
+
 ## Scheduler tick and context switch
 
 `scheduler.Scheduler`:
@@ -105,13 +124,14 @@ The exit path does not use `SUBS pc, lr` or `RFE`. If the target CPSR has I = 0,
 1. If `current.time_remaining == 0`:
    - save `*frame` into the current task and reset its slice to 10 ticks,
    - `schedule()` requeues the current task and rotates the highest-priority queue,
-   - `tryContextSwitch`: `next()` → `remove` → `switchTo` (re-enqueue the old task; TLBIALL if `vma.l1` differs) → `*frame = next.cpu_state`.
+   - `tryContextSwitch`: `next()` → `remove` → `switchTo` (re-enqueue the old task; if `vma.l1` differs, TLBIALL and write `next.vma.l1_phys` to TTBR0) → `*frame = next.cpu_state`.
 2. `current.time_remaining -= 1`.
 
-`switchTo` never writes TTBR0 or TTBR1, so every task still runs on the kernel L1. The TLBIALL there anticipates per-task tables.
+TTBR1 always holds the boot L1, so the kernel half is shared. TTBR0 is per task. The TLBIALL runs before the TTBR0 write; there is no barrier between the write and the return to the task.
 
 ## Caveats
 
 - `timers.enable` calls `setTval(GenericTimer.freq)` **before** `GenericTimer.enable()` reads `CNTFRQ` into `freq`. The first interval uses whatever `freq` held (it is declared `undefined`).
 - Writing 0 to `GICD_ISENABLERn` has no effect. Interrupts are disabled by writing 1 to `GICD_ICENABLERn` (GICv2 §4.3.5–4.3.6). `GICD_ITARGETSR0–7` (IDs 0–31) are read-only.
-- The abort stubs use `lr - 4` for every exception. The data-abort return address is `lr - 8` (ARM ARM B1.8.3, table "Offsets applied to Link value for exceptions taken to PL1 modes"). This doesn't matter yet because the handlers never return.
+- The abort stubs use `lr - 4` for every exception. That is correct for prefetch aborts, but the data-abort return address is `lr - 8` (ARM ARM B1.8.3, table "Offsets applied to Link value for exceptions taken to PL1 modes"). This doesn't matter yet because `dabort_handler` never returns.
+- Abort mode has no stack, yet `pabort_handler` now returns and runs on every user page fault. `_pabort_handler` pushes 56 bytes onto whatever SP_abt held at reset. A `_pabort_stack_top` gap already exists in linker.ld but `initStacks` never loads it.

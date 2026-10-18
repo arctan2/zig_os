@@ -14,7 +14,8 @@ Files: `linker.ld`, `src/mm/*.zig`, `src/arm/ttbr.zig`, `src/arm/arm.zig`.
 0x4000_8000  │ boot L1 table (16 KiB)    │
 0x4010_0000  ┼ .vectors .text .data ...  ─┤ high kernel LMA (2 MiB)
 0x4030_0000  ┼ free_region_start         ─┘
-             │ Page metadata, then buddy-allocated pages
+             │ Page metadata (0x4030_0000 – 0x4047_DC00)
+0x4050_0000  │ base_addr: buddy-allocated pages
 0x5FF0_0000  │ initramfs copy (getInitRamfs)
 0x6000_0000  ┴ end of RAM
 ```
@@ -27,17 +28,18 @@ Addresses inside the image (`0x4000_41a8`, `0x4030_0000`, …) are from the curr
 0xC000_0000 ─ 0xE000_0000   linear map of all RAM: VA = PA + KERNEL_OFFSET (0x8000_0000)
   0xC000_8000                 boot L1 table
   0xC010_0000                 _vkernel_start: vector_table, .text, .data, .bss, .rodata
-  0xC024_E210                 _irq_stack_top    (4 KiB)
-  0xC025_2210                 _sys_stack_top    (16 KiB, System/User)
-  0xC025_6210                 _pabort_stack_top (16 KiB, unused)
-  0xC025_A210                 _vstack_top       (16 KiB, SVC)
+  0xC025_39D8                 _irq_stack_top    (4 KiB)
+  0xC025_79D8                 _sys_stack_top    (16 KiB, System/User)
+  0xC025_B9D8                 _pabort_stack_top (16 KiB, unused)
+  0xC025_F9D8                 _vstack_top       (16 KiB, SVC)
   0xC030_0000                 _vkernel_end
+  0xC030_0000                 Page metadata (written by initGlobal)
 0xF000_0000                 UART  (1 MiB section)
 0xF010_0000                 GIC   (1 MiB section)
 0xFFF0_0000                 vector table alias → PA 0x4010_0000 (VBAR)
 ```
 
-All of this is in the TTBR1 range (VA ≥ 1 GiB because TTBCR.N = 2). Everything is mapped with 1 MiB sections. L2 tables are supported by `mapAddr` but nothing uses them yet.
+All of this is in the TTBR1 range (VA ≥ 1 GiB because TTBCR.N = 2). The kernel uses only 1 MiB sections. User mappings (VA < 1 GiB, through TTBR0) are 4 KiB small pages in L2 tables, created on demand by `pabort_handler` ([interrupts.md](interrupts.md#prefetch-abort-demand-paging)).
 
 ## Short-descriptor translation tables
 
@@ -72,7 +74,7 @@ Memory attributes (TEX/C/B) are never set, so every mapping, RAM included, is St
 
 ### Kernel vs. user half
 
-- Hardware split: TTBCR.N = 2, so VA < `0x4000_0000` goes through TTBR0 and everything else through TTBR1 (ARM ARM B3.5.4). TTBR0 is never programmed.
+- Hardware split: TTBCR.N = 2, so VA < `0x4000_0000` goes through TTBR0 and everything else through TTBR1 (ARM ARM B3.5.4). `scheduler.switchTo` writes the next task's `vma.l1_phys` to TTBR0. TTBR1 always holds the boot L1.
 - Software split: `L1PageTable.freeEntries` treats entries `0 .. 0xC00` (VA < `0xC000_0000`, `kglobal.getEarlyKernelStartVirt()`) as per-process. A task's L1 is a full copy of the kernel L1 (`L1PageTable.init`).
 
 ### TLB maintenance
@@ -96,10 +98,13 @@ Each is followed by `dsb; isb`. Architectural rules (ARM ARM B3.10):
 
 | Helper | Formula | Used by |
 |---|---|---|
-| `physToVirtByKernelOffset` / `virtToPhysByKernelOffset` | `± KERNEL_OFFSET` (`0x8000_0000`, linker constant) | `physToL1Virt`, `physToL2Virt`, `getInitRamfs`, `setKernelTextPermissions` |
-| `physToVirtByVirtOffset` / `virtToPhysByVirtOffset` | `± VIRT_OFFSET` (runtime `_vkernel_end - _early_kernel_end`) | `page_alloc.initGlobal` metadata, `kbacking_alloc`, `L1PageTable.init` |
+| `physToVirtByKernelOffset` / `virtToPhysByKernelOffset` | `± KERNEL_OFFSET` (`0x8000_0000`, linker constant) | every phys ↔ kernel-pointer conversion: `physToL1Virt`, `physToL2Virt`, `L1PageTable.init`/`free`, `L2PageTable.getPhysAddr`/`free`, `kbacking_alloc`, `getInitRamfs`, `mapFreePagesToKernelL1`, `setKernelTextPermissions` |
 
-In unit tests (`builtin.is_test`) all four are identity functions, and `KERNEL_OFFSET` is exported as 0.
+There is one kernel linear map, VA = PA + `KERNEL_OFFSET`, so this pair is the only conversion. `page_alloc.initGlobal` takes the offset as a parameter (`KERNEL_OFFSET` in the kernel, 0 in tests).
+
+Physical addresses from `pageToPhys` go to the MMU unchanged (L1/L2 descriptors, TTBR). Convert only when the kernel itself needs to read or write the memory.
+
+In unit tests (`builtin.is_test`) both helpers are identity functions, and `KERNEL_OFFSET` is exported as 0.
 
 ## Allocators
 
@@ -117,8 +122,8 @@ A binary buddy allocator. `PAGE_SIZE = 4 KiB`, `MAX_ORDER = 11` (orders 0–10, 
 ```
 mm.kalloc  = DebugAllocator(.{ .safety = false, .MutexType = SpinLock })
              └─ backing: kbacking_alloc.allocator
-                         alloc(len)  → allocPages(ceil(len / 4K)) → phys + VIRT_OFFSET
-                         free(mem)   → freeAddr(virt - VIRT_OFFSET)
+                         alloc(len)  → allocPages(ceil(len / 4K)) → phys + KERNEL_OFFSET
+                         free(mem)   → freeAddr(virt - KERNEL_OFFSET)
                          resize/remap unsupported
 ```
 
@@ -128,18 +133,19 @@ mm.kalloc  = DebugAllocator(.{ .safety = false, .MutexType = SpinLock })
 
 `VirtAddrSpace` holds:
 
-- `l1`: this address space's L1 table.
+- `l1`: this address space's L1 table (kernel pointer).
+- `l1_phys`: its physical address, the value written to TTBR0.
 - `vma_list` + `vma_rbtree`: `VirtAllocation { start, size, type, file, file_off }` regions, stored as a sorted list plus an RB-tree keyed by `start`.
 
 Methods:
 
-- `mapAddr(virt, phys, .{.type = .Section | .L2}, perm)`: installs a single mapping and allocates an L2 table when needed. It never allocates backing pages, and it does nothing if the entry is already valid.
+- `mapAddr(virt, phys, .{.type = .Section | .L2}, perm)`: installs a single mapping and allocates an L2 table when needed. It never allocates backing pages, and it does nothing if the entry is already valid. `perm` is applied only to sections; L2 small pages are created with AP = 0.
 - `unmapAddr(virt)`: zeroes the L1 section entry or the L2 entry. It never frees L2 tables.
 - `mmap(alloc, start, size, type, file)`: inserts a `VirtAllocation`, merging it with neighbours of the same type and file. It returns `AlreadyMapped` if the range overlaps an existing one. It does not touch page tables.
 
 ## Caveats
 
-- **`VIRT_OFFSET` ≠ `KERNEL_OFFSET`.** `VIRT_OFFSET = _vkernel_end - _early_kernel_end` = `0xC030_0000 - 0x4010_0000` = `0x8020_0000`, while the linear map is built with `KERNEL_OFFSET = 0x8000_0000`. Any `phys + VIRT_OFFSET` access therefore touches physical memory `phys + 2 MiB` (the high kernel's size). The heap is self-consistent because it only ever converts with `VIRT_OFFSET`. Code that gives `pageToPhys()` to the MMU will be wrong: a future TTBR write of a task's L1, or the L2 descriptor in `mapAddr` (which also uses the physical address as a pointer in `L2PageTable.init`).
-- **Allocator range overruns RAM.** `initGlobal` moves `base_addr` past the metadata but still manages `floor(free_region_size / 4 MiB)` blocks. Combined with the 2 MiB shift above, the top blocks can extend past `0x6000_0000`. The initramfs copy at `0x5FF0_0000` is also inside the managed range. Blocks are handed out from low addresses first, so neither problem shows up yet.
+- **Everything in the image must end before `_vkernel_end`.** `KernelBounds` assumes the kernel ends there, and `initGlobal` writes the `Page` array at `_vkernel_end`'s physical address (`0x4030_0000`). linker.ld therefore collects `.text.*` and `.rodata.*` explicitly. Zig emits string literals and constants into `.rodata.str1.1`, `.rodata.cst*`, `.rodata.__anon_*`, and so on. With only `*(.rodata)` they were placed as orphan sections after `_vkernel_end` and overwritten by the metadata. Check with `objdump -h zig-out/bin/kernel` that nothing non-empty has a VMA ≥ `0xC030_0000`.
+- **Allocator range overruns RAM.** `initGlobal` sets `base_addr = 0x4050_0000` (past the metadata) but still manages `floor(free_region_size / 4 MiB)` = 127 blocks counted from `free_region_start`. The last block ends at `0x6010_0000`, 1 MiB past the end of RAM. The initramfs copy at `0x5FF0_0000` is also inside the managed range. Blocks are handed out from low addresses first, so neither problem shows up yet.
+- **Boot sections 0xC06–0xC08 keep AP = 0.** `early_kernel` maps `0xC000_0000–0xC08F_FFFF`. `mapFreePagesToKernelL1` skips them because they are already valid, and `setKernelTextPermissions` only covers up to the end of the metadata (0xC05). That is allocator memory (`0x4060_0000–0x408F_FFFF`), which would fault once DACR is set to Client.
 - **Missing TLB invalidation** after `setKernelTextPermissions` (valid → valid) and `unmapIdentityKernel` (valid → fault). QEMU's softmmu TLB can keep the old translation until the next TLBIALL.
-- `L2PageTable.init` returns `pageToPhys(...)` as a pointer and writes through it. RAM physical addresses (`0x4xxx_xxxx`) are not mapped at the same VA once the identity section is removed, so this faults.

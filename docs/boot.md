@@ -9,7 +9,7 @@ The ELF has two halves with different link addresses:
 | Region | VMA (link address) | LMA (load address) | Contents |
 |---|---|---|---|
 | Early kernel | `PHYS_BASE` = `0x4000_0000` | same | `.text.boot`, `.bss.boot`, 16 KiB early stack, 16 KiB L1 table |
-| High kernel | `VIRT_BASE` = `0xC010_0000` | `0x4010_0000` | `.vectors`, `.text`, `.data`, `.bss`, `.rodata`, mode stacks |
+| High kernel | `VIRT_BASE` = `0xC010_0000` | `0x4010_0000` | `.vectors`, `.text` (+ `.text.*`), `.data`, `.bss`, `.rodata` (+ `.rodata.*`), mode stacks |
 
 Symbols defined in linker.ld:
 
@@ -18,7 +18,7 @@ Symbols defined in linker.ld:
 - `_kernel_l1_page_table_phys`: a 16 KiB-aligned, 16 KiB L1 table. The alignment is required because TTBR holds bits [31:14] of the table address.
 - `KERNEL_OFFSET = _vkernel_start - _early_kernel_end` = `0xC010_0000 - 0x4010_0000` = `0x8000_0000`. Every high-kernel VMA equals its LMA + `KERNEL_OFFSET`.
 - `_irq_stack_top` (4 KiB), `_sys_stack_top`, `_pabort_stack_top`, `_vstack_top` (16 KiB each). These are gaps after `.rodata`, not output sections.
-- `_vkernel_end`: rounded up to 1 MiB (currently `0xC030_0000`).
+- `_vkernel_end`: rounded up to 1 MiB (currently `0xC030_0000`). Every non-empty section must end before it, because the page allocator's metadata is written there ([memory.md caveats](memory.md#caveats)).
 
 QEMU's ELF loader places each segment at its LMA and zero-fills the `.bss` part of each segment (memsz > filesz). The kernel never clears `.bss` itself.
 

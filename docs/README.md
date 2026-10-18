@@ -50,7 +50,7 @@ QEMU loads ELF at its LMA (0x4000_0000), r2 = DTB phys
                  ├─ initStacks              IRQ and SYS mode stacks
                  ├─ scheduler.init          idle task
                  ├─ InitRamFs + vfs.dock    cpio -> ramfs at /initramfs
-                 ├─ initProcess             open /initramfs/bin/init, parse ELF, allocTask
+                 ├─ initProcess             load /initramfs/bin/init VMAs, allocTask, scheduler.add
                  ├─ interrupts.setup        VBAR, GIC dist + CPU iface
                  ├─ timers.enable           PPI 30 (non-secure phys timer)
                  ├─ cpsie i ; cps #0x10     unmask IRQ, drop to User mode
