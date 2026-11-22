@@ -114,14 +114,21 @@ fn lame_task() void {
 fn initStacks() void {
     const sys_stack = @intFromPtr(&kglobal._sys_stack_top);
     const irq_stack = @intFromPtr(&kglobal._irq_stack_top);
+    const abort_stack = @intFromPtr(&kglobal._abort_stack_top);
+    const undef_stack = @intFromPtr(&kglobal._undef_stack_top);
+
     asm volatile(
         \\ cps #0x12
         \\ mov sp, %[irq_stack]
         \\ cps #0x1f
         \\ mov sp, %[sys_stack]
+        \\ cps #0x17
+        \\ mov sp, %[abort_stack]
+        \\ cps #0x1b
+        \\ mov sp, %[undef_stack]
         \\ cps #0x13
         :
-        : [sys_stack] "r" (sys_stack), [irq_stack] "r" (irq_stack)
+        : [sys_stack] "r" (sys_stack), [irq_stack] "r" (irq_stack), [abort_stack] "r" (abort_stack), [undef_stack] "r" (undef_stack)
     );
 }
 

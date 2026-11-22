@@ -334,7 +334,7 @@ pub fn RBTree(comptime K: type, comptime V: type, comptime Context: type, cmp: *
             return null;
         }
 
-        pub fn searchLessThan(self: *const Self, key: K) ?*Node {
+        pub fn searchLessThanEq(self: *const Self, key: K) ?*Node {
             var cur = self.root;
             var lt: ?*Node = null;
 

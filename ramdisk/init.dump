@@ -1,0 +1,18 @@
+
+bin/init:     file format elf32-littlearm
+
+
+Disassembly of section .text:
+
+000200ec <_start>:
+   200ec:	e3a00001 	mov	r0, #1
+   200f0:	e3a01002 	mov	r1, #2
+   200f4:	e3a07007 	mov	r7, #7
+   200f8:	ef000000 	svc	0x00000000
+   200fc:	eafffffe 	b	200fc <_start+0x10>
+   20100:	e7ffdefe 	udf	#65006	@ 0xfdee
+
+00020104 <__aeabi_unwind_cpp_pr0>:
+   20104:	e92d4800 	push	{fp, lr}
+   20108:	e1a0b00d 	mov	fp, sp
+   2010c:	e8bd8800 	pop	{fp, pc}

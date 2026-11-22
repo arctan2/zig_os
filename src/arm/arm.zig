@@ -9,6 +9,8 @@ pub const ifsr = @import("ifsr.zig");
 pub const ifar = @import("ifar.zig");
 pub const dfsr = @import("dfsr.zig");
 pub const dfar = @import("dfar.zig");
+pub const lr = @import("lr.zig");
+pub const spsr = @import("spsr.zig");
 
 pub inline fn dsb() void {
     asm volatile ("dsb");

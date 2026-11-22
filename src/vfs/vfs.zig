@@ -228,6 +228,13 @@ fn openDentry(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode
 
 pub fn open(allocator: std.mem.Allocator, path: []const u8, mode: fs.File.Mode) !*fs.File {
     const dentry = try openDentry(allocator, path, mode);
+
+    if(mode.create == 1) {
+        const inode = dentry.inode orelse return error.invalidfile;
+        const dock_point = inode.dock_point orelse return error.invalidfile;
+        try dock_point.fs_ops.i_ops.chmod(dock_point.fs_ptr, inode, .{ .r = mode.read, .w = mode.write });
+    }
+
     return try fs.File.create(allocator, dentry, mode);
 }
 
@@ -358,11 +365,11 @@ pub fn mv(allocator: std.mem.Allocator, from: []const u8, to: []const u8) !void 
 
 pub fn read(f: *fs.File, buf: []u8) !usize {
     const dentry = f.dentry;
-    const inode = dentry.inode orelse return error.InvalidFile;
-    const dock_point = inode.dock_point orelse return error.InvalidFile;
+    const inode = dentry.inode orelse return error.invalidfile;
+    const dock_point = inode.dock_point orelse return error.invalidfile;
 
     if(f.mode.read == 0) {
-        return error.NoRead;
+        return error.noread;
     }
 
     const count = try dock_point.fs_ops.f_ops.read(dock_point.fs_ptr, inode, f.offset, buf);

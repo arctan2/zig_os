@@ -140,7 +140,7 @@ pub const VirtAddrSpace = struct {
     ) !*VirtAllocation {
         if(size == 0) return error.InvalidSize;
         const end = std.math.add(usize, start, size) catch return error.InvalidRange;
-        const prev = self.vma_rbtree.searchLessThan(start);
+        const prev = self.vma_rbtree.searchLessThanEq(start);
         const next_ll_node = if(prev) |p| p.value.list_node.next else if(self.vma_list.head) |h| if(h.container().start > start) h else null else null;
 
         var can_merge_left = false;
@@ -209,7 +209,7 @@ pub const VirtAddrSpace = struct {
 };
 
 test "alloc and dealloc ~1GB l1 entries" {
-    // if(!utils.isAllTestMode()) return error.SkipZigTest;
+    if(!utils.isAllTestMode()) return error.SkipZigTest;
     var allocator = std.testing.allocator;
     const g = try testing_utils.testBasicInit(&allocator);
     defer allocator.free(g.memory);
@@ -221,7 +221,7 @@ test "alloc and dealloc ~1GB l1 entries" {
     for(0..1020) |i| {
         const cur: usize = i * page_alloc.SECTION_SIZE;
         const block = try page_alloc.allocPages(256);
-        try mem.mapAddr(cur, page_alloc.pageToPhys(block), .{ .type = .Section });
+        try mem.mapAddr(cur, page_alloc.pageToPhys(block), .{ .type = .Section }, .KernelRW);
     }
 
     mem.l1.deinit();
@@ -248,7 +248,7 @@ test "map and unmap few individual pages" {
     for(0..100) |_| {
         const page = try page_alloc.allocPages(1);
         try my_list.append(allocator, page);
-        try mem.mapAddr(cur_virt, page_alloc.pageToPhys(page), .{ .type = .L2 });
+        try mem.mapAddr(cur_virt, page_alloc.pageToPhys(page), .{ .type = .L2 }, .KernelRW);
         cur_virt += page_alloc.PAGE_SIZE;
     }
 
@@ -289,7 +289,7 @@ test "mmap: basic insert with no neighbors" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    const vma = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);
+    const vma = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null, 0);
 
     try std.testing.expect(vma.start == 0x1000);
     try std.testing.expect(vma.size == 0x1000);
@@ -311,7 +311,7 @@ test "mmap: zero size returns error" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    try std.testing.expectError(error.InvalidSize, mem.mmap(allocator, 0x1000, 0, .heap, null));
+    try std.testing.expectError(error.InvalidSize, mem.mmap(allocator, 0x1000, 0, .heap, null, 0));
     try mem.vma_rbtree.deinit(allocator);
 }
 
@@ -326,7 +326,7 @@ test "mmap: start+size overflow returns error" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    try std.testing.expectError(error.InvalidRange, mem.mmap(allocator, std.math.maxInt(usize) - 0x10, 0x1000, .heap, null));
+    try std.testing.expectError(error.InvalidRange, mem.mmap(allocator, std.math.maxInt(usize) - 0x10, 0x1000, .heap, null, 0));
     try mem.vma_rbtree.deinit(allocator);
 }
 
@@ -341,16 +341,16 @@ test "mmap: overlap with existing vma returns error" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    _ = try mem.mmap(allocator, 0x1000, 0x2000, .heap, null); // [0x1000, 0x3000)
+    _ = try mem.mmap(allocator, 0x1000, 0x2000, .heap, null, 0); // [0x1000, 0x3000)
 
     // overlaps from the left
-    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x500, 0x1000, .heap, null));
+    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x500, 0x1000, .heap, null, 0));
     // overlaps from the right
-    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x2500, 0x1000, .heap, null));
+    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x2500, 0x1000, .heap, null, 0));
     // fully contained
-    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x1500, 0x500, .heap, null));
+    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x1500, 0x500, .heap, null, 0));
     // exact same range
-    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x1000, 0x2000, .heap, null));
+    try std.testing.expectError(error.AlreadyMapped, mem.mmap(allocator, 0x1000, 0x2000, .heap, null, 0));
 
     try mem.vma_rbtree.deinit(allocator);
 }
@@ -366,8 +366,8 @@ test "mmap: merges with left neighbor of same type and file" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    const first = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null); // [0x1000, 0x2000)
-    const merged = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null); // [0x2000, 0x3000)
+    const first = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null, 0); // [0x1000, 0x2000)
+    const merged = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null, 0); // [0x2000, 0x3000)
 
     try std.testing.expect(merged == first);
     try std.testing.expect(merged.start == 0x1000);
@@ -389,8 +389,8 @@ test "mmap: merges with right neighbor of same type and file" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    const right = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null); // [0x2000, 0x3000)
-    const merged = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null); // [0x1000, 0x2000)
+    const right = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null, 0); // [0x2000, 0x3000)
+    const merged = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null, 0); // [0x1000, 0x2000)
 
     try std.testing.expect(merged == right);
     try std.testing.expect(merged.start == 0x1000);
@@ -412,9 +412,9 @@ test "mmap: merges with both neighbors when bridging a gap" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    const left = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);  // [0x1000, 0x2000)
-    _ = try mem.mmap(allocator, 0x3000, 0x1000, .heap, null);           // [0x3000, 0x4000)
-    const merged = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null); // bridges the gap -> [0x1000, 0x4000)
+    const left = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null, 0);  // [0x1000, 0x2000)
+    _ = try mem.mmap(allocator, 0x3000, 0x1000, .heap, null, 0);           // [0x3000, 0x4000)
+    const merged = try mem.mmap(allocator, 0x2000, 0x1000, .heap, null, 0); // bridges the gap -> [0x1000, 0x4000)
 
     try std.testing.expect(merged == left);
     try std.testing.expect(merged.start == 0x1000);
@@ -440,8 +440,8 @@ test "mmap: does not merge across different alloc types" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    _ = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);     // [0x1000, 0x2000)
-    const second = try mem.mmap(allocator, 0x2000, 0x1000, .stack, null); // adjacent but different type
+    _ = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null, 0);     // [0x1000, 0x2000)
+    const second = try mem.mmap(allocator, 0x2000, 0x1000, .stack, null, 0); // adjacent but different type
 
     try std.testing.expect(second.start == 0x2000);
     try std.testing.expect(second.size == 0x1000);
@@ -465,8 +465,8 @@ test "mmap: does not merge across different files" {
     var file_a: fs.File = undefined;
     var file_b: fs.File = undefined;
 
-    _ = try mem.mmap(allocator, 0x1000, 0x1000, .other, &file_a);     // [0x1000, 0x2000)
-    const second = try mem.mmap(allocator, 0x2000, 0x1000, .other, &file_b); // adjacent, different file
+    _ = try mem.mmap(allocator, 0x1000, 0x1000, .other, &file_a, 0);     // [0x1000, 0x2000)
+    const second = try mem.mmap(allocator, 0x2000, 0x1000, .other, &file_b, 0); // adjacent, different file
 
     try std.testing.expect(second.start == 0x2000);
     try std.testing.expect(second.size == 0x1000);
@@ -487,9 +487,9 @@ test "mmap: inserting between two disjoint non-adjacent vmas" {
     defer freeAllVmas(allocator, &mem);
     defer mem.l1.deinit();
 
-    const left = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null);  // [0x1000, 0x2000)
-    const right = try mem.mmap(allocator, 0x4000, 0x1000, .heap, null); // [0x4000, 0x5000), gap before it
-    const mid = try mem.mmap(allocator, 0x2500, 0x500, .heap, null);    // [0x2500, 0x3000), no adjacency
+    const left = try mem.mmap(allocator, 0x1000, 0x1000, .heap, null, 0);  // [0x1000, 0x2000)
+    const right = try mem.mmap(allocator, 0x4000, 0x1000, .heap, null, 0); // [0x4000, 0x5000), gap before it
+    const mid = try mem.mmap(allocator, 0x2500, 0x500, .heap, null, 0);    // [0x2500, 0x3000), no adjacency
 
     try std.testing.expect(mid.start == 0x2500);
     try std.testing.expect(mid.size == 0x500);
@@ -516,7 +516,7 @@ test "mmap: multiple mmaps fully merge into a single vma" {
 
     var last: *VirtAllocation = undefined;
     for (0..10) |i| {
-        last = try mem.mmap(allocator, 0x1000 * (i + 1), 0x1000, .segment, null);
+        last = try mem.mmap(allocator, 0x1000 * (i + 1), 0x1000, .segment, null, 0);
     }
 
     try std.testing.expect(mem.vma_list.head.?.container() == last);

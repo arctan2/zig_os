@@ -18,6 +18,8 @@ pub extern const _vstack_top: u8;
 pub extern const _irq_stack_top: u8;
 pub extern const _sys_stack_top: u8;
 pub extern const _pabort_stack_top: u8;
+pub extern const _abort_stack_top: u8;
+pub extern const _undef_stack_top: u8;
 
 pub extern const _kernel_l1_page_table_phys: u8;
 
@@ -79,9 +81,14 @@ pub const KernelBounds = struct {
 
 comptime {
     const FAKE_OFF: usize = 0;
+    const VIRT_FAKE_OFF: usize = 0x00100000;
     if (builtin.is_test) {
         @export(&FAKE_OFF, .{
             .name = "KERNEL_OFFSET",
+            .linkage = .strong,
+        });
+        @export(&VIRT_FAKE_OFF, .{
+            .name = "VIRT_BASE",
             .linkage = .strong,
         });
     }

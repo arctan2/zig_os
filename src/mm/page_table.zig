@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const uart = @import("uart");
 const page_alloc = @import("page_alloc.zig");
 const kglobal = @import("kglobal.zig");
@@ -100,15 +101,12 @@ pub const L1PageTable = struct {
     }
 
     pub fn freeEntries(self: *L1PageTable) void {
-        const kernel_start = kglobal.getEarlyKernelStartVirt();
-
-        for (0..kernel_start) |i| {
+        for (0..self.entries.len) |i| {
             switch (self.getEntryType(i)) {
                 .Section => self.getEntryAs(SectionEntry, i).free(),
                 .L2TablePtr => self.getEntryAs(L2TableAddr, i).free(),
                 else => {},
             }
-
             self.entries[i] = 0;
         }
     }
@@ -119,16 +117,17 @@ pub const L1PageTable = struct {
     }
 
     pub fn print(self: *L1PageTable) void {
-        uart.print("--------L1 TABLE ({x})----------\n", .{@intFromPtr(self)});
+        const printer = if(builtin.is_test) std.debug.print else uart.print;
+        printer("--------L1 TABLE ({x})----------\n", .{@intFromPtr(self)});
         var i: usize = 0;
         while(i < self.entries.len) : (i += 1) {
             const e = self.entries[i];
             const entry = self.getEntryAs(SectionEntry, i);
             if(e != 0) {
-                uart.print("{}({x}): {b} ({x}) perm: {b} {b}\n", .{i, i, e, e, entry.apx, entry.ap});
+                printer("{}({x}): {b} ({x}) perm: {b} {b}\n", .{i, i, e, e, entry.apx, entry.ap});
             }
         }
-        uart.print("--------L1 TABLE END----------\n", void);
+        printer("--------L1 TABLE END----------\n", .{});
     }
 };
 
